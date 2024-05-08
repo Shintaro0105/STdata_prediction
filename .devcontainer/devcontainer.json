@@ -1,0 +1,39 @@
+{
+	"name": "Ubuntu",
+	"build": {
+		"context": ".",
+		"dockerfile": "Dockerfile"
+	},
+	// If you want to use GPU, uncomment the following
+	// "runArgs": [
+	// 	"--gpus",
+	// 	"all"
+	// ],
+	// "features": {
+	// 	"ghcr.io/devcontainers/features/nvidia-cuda": {
+	// 		"cudaVersion": 11.8
+	// 	}
+	// },
+	"onCreateCommand": "rye config --set-bool behavior.use-uv=true && rye sync",
+	"postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
+	// "mounts": [
+	// 	{
+	// 		"source": "${localEnv:HOME}/.config/git",
+	// 		"target": "/home/vscode/.config/git",
+	// 		"type": "bind"
+	// 	}
+	// ],
+	"customizations": {
+		"vscode": {
+			"settings": {
+				"python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python"
+			},
+			"extensions": [
+				"ms-azuretools.vscode-docker",
+				"ms-python.python",
+				"ms-toolsai.jupyter",
+				"charliermarsh.ruff"
+			]
+		}
+	}
+}
