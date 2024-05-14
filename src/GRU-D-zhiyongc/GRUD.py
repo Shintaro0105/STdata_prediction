@@ -133,6 +133,9 @@ class GRUD(nn.Module):
         h_tilde = F.tanh(self.hl(combined_r))
         h = (1 - z) * h + z * h_tilde
 
+        del delta_x, delta_h, combined, z, r, combined_r, h_tilde
+        torch.cuda.empty_cache()
+
         return h
 
     def forward(self, input):

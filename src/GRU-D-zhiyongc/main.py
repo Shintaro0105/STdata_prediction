@@ -5,8 +5,11 @@ Created on Sat May 12 16:49:49 2018
 @author: Zhiyong
 """
 
+import time
+
 import numpy as np
 import pandas as pd
+import torch.utils.data as utils
 from GRUD import *
 
 
@@ -34,7 +37,11 @@ def PrepareDataset(
         Training dataloader
         Testing dataloader
     """
+
+    speed_matrix_s = np.split(speed_matrix, 4)
+    speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
+    print("Time len: ", time_len)
 
     speed_matrix = speed_matrix.clip(0, 100)
 
@@ -200,6 +207,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             optimizer.step()
 
+            del inputs, labels, outputs, loss_train
+            torch.cuda.empty_cache()
+
             # validation
             try:
                 inputs_val, labels_val = next(valid_dataloader_iter)
@@ -224,6 +234,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             losses_valid.append(loss_valid.data)
             losses_epoch_valid.append(loss_valid.data)
+
+            del inputs_val, labels_val, outputs_val, loss_valid
+            torch.cuda.empty_cache()
 
             # output
             trained_number += 1
@@ -265,6 +278,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             )
         )
         pre_time = cur_time
+
+        mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+        print(f"Epoch {epoch}: GPU memory allocated: {mem_allocated:.2f} MB")
 
     return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
 
@@ -320,10 +336,10 @@ def Test_Model(model, test_dataloader, max_speed):
             MAE = torch.mean(torch.abs(outputs[:, -1, :] - torch.squeeze(labels)))
             MAPE = torch.mean(torch.abs(outputs[:, -1, :] - torch.squeeze(labels)) / torch.squeeze(labels))
 
-        losses_mse.append(loss_mse.data)
-        losses_l1.append(loss_l1.data)
-        MAEs.append(MAE.data)
-        MAPEs.append(MAPE.data)
+        losses_mse.append(loss_mse.data.cpu().numpy())  # Move to CPU and convert to NumPy array
+        losses_l1.append(loss_l1.data.cpu().numpy())  # Move to CPU and convert to NumPy array
+        MAEs.append(MAE.data.cpu().numpy())  # Move to CPU and convert to NumPy array
+        MAPEs.append(MAPE.data.cpu().numpy())  # Move to CPU and convert to NumPy array
 
         tested_batch += 1
 
