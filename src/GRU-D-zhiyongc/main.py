@@ -38,7 +38,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.split(speed_matrix, 4)
+    speed_matrix_s = np.split(speed_matrix, 6)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -210,6 +210,12 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             del inputs, labels, outputs, loss_train
             torch.cuda.empty_cache()
 
+            # if use_gpu:
+            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            #     print(
+            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after training step: {mem_allocated:.2f} MB"
+            #     )
+
             # validation
             try:
                 inputs_val, labels_val = next(valid_dataloader_iter)
@@ -237,6 +243,12 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             del inputs_val, labels_val, outputs_val, loss_valid
             torch.cuda.empty_cache()
+
+            # if use_gpu:
+            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            #     print(
+            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after validation step: {mem_allocated:.2f} MB"
+            #     )
 
             # output
             trained_number += 1
@@ -279,8 +291,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
         )
         pre_time = cur_time
 
-        mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-        print(f"Epoch {epoch}: GPU memory allocated: {mem_allocated:.2f} MB")
+        if use_gpu:
+            mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            print(f"Epoch {epoch}: GPU memory allocated at end of epoch: {mem_allocated:.2f} MB")
 
     return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
 
