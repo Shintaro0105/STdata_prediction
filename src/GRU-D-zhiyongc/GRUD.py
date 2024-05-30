@@ -47,8 +47,15 @@ class FilterLinear(nn.Module):
     #         print(self.bias.data)
 
     def forward(self, input):
-        #         print(self.filter_square_matrix.mul(self.weight))
-        return F.linear(input, self.filter_square_matrix.mul(self.weight), self.bias)
+        # フィルタ行列を使用して重み行列をフィルタリング
+        filtered_weight = self.filter_square_matrix.mul(self.weight)
+        output = F.linear(input, filtered_weight, self.bias)
+
+        # 不要な変数を削除し、メモリ解放
+        del filtered_weight
+        torch.cuda.empty_cache()
+
+        return output
 
     def __repr__(self):
         return (
@@ -117,8 +124,8 @@ class GRUD(nn.Module):
         self.output_last = output_last
 
     def step(self, x, x_last_obsv, x_mean, h, mask, delta):
-        batch_size = x.shape[0]
-        dim_size = x.shape[1]
+        # batch_size = x.shape[0]
+        # dim_size = x.shape[1]
 
         delta_x = torch.exp(-torch.max(self.zeros, self.gamma_x_l(delta)))
         delta_h = torch.exp(-torch.max(self.zeros, self.gamma_h_l(delta)))
@@ -140,9 +147,9 @@ class GRUD(nn.Module):
 
     def forward(self, input):
         batch_size = input.size(0)
-        type_size = input.size(1)
+        # type_size = input.size(1)
         step_size = input.size(2)
-        spatial_size = input.size(3)
+        # spatial_size = input.size(3)
 
         Hidden_State = self.initHidden(batch_size)
         X = torch.squeeze(input[:, 0, :, :])
@@ -164,6 +171,8 @@ class GRUD(nn.Module):
                 outputs = Hidden_State.unsqueeze(1)
             else:
                 outputs = torch.cat((outputs, Hidden_State.unsqueeze(1)), 1)
+
+            torch.cuda.empty_cache()
 
         if self.output_last:
             return outputs[:, -1, :]

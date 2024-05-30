@@ -9,6 +9,8 @@ import time
 
 import numpy as np
 import pandas as pd
+import torch
+import torch.nn as nn
 import torch.utils.data as utils
 from GRUD import *
 
@@ -170,12 +172,20 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     is_best_model = 0
     patient_epoch = 0
     for epoch in range(num_epochs):
+        # if use_gpu:
+        #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+        #     print(f"Epoch {epoch}: GPU memory allocated at start of epoch: {mem_allocated:.2f} MB")
+
         trained_number = 0
 
         valid_dataloader_iter = iter(valid_dataloader)
 
         losses_epoch_train = []
         losses_epoch_valid = []
+
+        # if use_gpu:
+        #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+        #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
 
         for data in train_dataloader:
             inputs, labels = data
@@ -184,13 +194,25 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
                 continue
 
             if use_gpu:
-                inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
+                inputs, labels = inputs.cuda(), labels.cuda()
             else:
-                inputs, labels = Variable(inputs), Variable(labels)
+                inputs, labels = inputs, labels
 
-            model.zero_grad()
+            optimizer.zero_grad()
+
+            # if use_gpu:
+            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            #     print(
+            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.zero_grad(): {mem_allocated:.2f} MB"
+            #     )
 
             outputs = model(inputs)
+
+            # if use_gpu:
+            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            #     print(
+            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after model(inputs): {mem_allocated:.2f} MB"
+            #     )
 
             if output_last:
                 loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
@@ -198,14 +220,30 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels)
 
+            # if use_gpu:
+            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            #     print(
+            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss calculation: {mem_allocated:.2f} MB"
+            #     )
+
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
 
-            optimizer.zero_grad()
-
             loss_train.backward()
 
+            # if use_gpu:
+            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            #     print(
+            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss_train.backward(): {mem_allocated:.2f} MB"
+            #     )
+
             optimizer.step()
+
+            # if use_gpu:
+            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
+            #     print(
+            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.step(): {mem_allocated:.2f} MB"
+            #     )
 
             del inputs, labels, outputs, loss_train
             torch.cuda.empty_cache()
@@ -217,6 +255,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             #     )
 
             # validation
+            model.eval()
             try:
                 inputs_val, labels_val = next(valid_dataloader_iter)
             except StopIteration:
@@ -224,24 +263,23 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
                 inputs_val, labels_val = next(valid_dataloader_iter)
 
             if use_gpu:
-                inputs_val, labels_val = Variable(inputs_val.cuda()), Variable(labels_val.cuda())
+                inputs_val, labels_val = inputs_val.cuda(), labels_val.cuda()
             else:
-                inputs_val, labels_val = Variable(inputs_val), Variable(labels_val)
+                inputs_val, labels_val = inputs_val, labels_val
 
-            model.zero_grad()
+            with torch.no_grad():
+                outputs_val = model(inputs_val)
 
-            outputs_val = model(inputs_val)
-
-            if output_last:
-                loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val))
-            else:
-                full_labels_val = torch.cat((inputs_val[:, 1:, :], labels_val), dim=1)
-                loss_valid = loss_MSE(outputs_val, full_labels_val)
+                if output_last:
+                    loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val))
+                else:
+                    full_labels_val = torch.cat((inputs_val[:, 1:, :], labels_val), dim=1)
+                    loss_valid = loss_MSE(outputs_val, full_labels_val)
 
             losses_valid.append(loss_valid.data)
             losses_epoch_valid.append(loss_valid.data)
 
-            del inputs_val, labels_val, outputs_val, loss_valid
+            del inputs_val, labels_val, outputs_val, loss_valid, data
             torch.cuda.empty_cache()
 
             # if use_gpu:
@@ -329,9 +367,9 @@ def Test_Model(model, test_dataloader, max_speed):
             continue
 
         if use_gpu:
-            inputs, labels = Variable(inputs.cuda()), Variable(labels.cuda())
+            inputs, labels = inputs.cuda(), labels.cuda()
         else:
-            inputs, labels = Variable(inputs), Variable(labels)
+            inputs, labels = inputs, labels
 
         outputs = model(inputs)
 
