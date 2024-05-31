@@ -81,6 +81,26 @@ def PrepareDataset(
                 X_last_obsv[i, j, k] = X_last_obsv[i, j - 1, k]  # last observation
         Delta = Delta / Delta.max()  # normalize
 
+        # Generate X_last_obsv_b and Delta_b for backward pass
+        S_b = S[:, ::-1, :]
+        Delta_b = np.zeros_like(S_b)
+        for i in range(1, S_b.shape[1]):
+            Delta_b[:, i, :] = S_b[:, i, :] - S_b[:, i - 1, :]
+
+        missing_index_b = np.where(Mask[:, ::-1, :] == 0)
+        X_last_obsv_b = np.copy(speed_sequences[:, ::-1, :])
+        for idx in range(missing_index_b[0].shape[0]):
+            i = missing_index_b[0][idx]
+            j = missing_index_b[1][idx]
+            k = missing_index_b[2][idx]
+            if j != 0 and j != 9:
+                Delta_b[i, j + 1, k] = Delta_b[i, j + 1, k] + Delta_b[i, j, k]
+            if j != 0:
+                X_last_obsv_b[i, j, k] = X_last_obsv_b[i, j - 1, k]  # last observation
+        Delta_b = Delta_b / Delta_b.max()  # normalize
+        X_last_obsv_b = X_last_obsv_b[:, ::-1, :]
+        Delta_b = Delta_b[:, ::-1, :]
+
     # shuffle and split the dataset to training and testing datasets
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
     sample_size = speed_sequences.shape[0]
@@ -95,11 +115,17 @@ def PrepareDataset(
         X_last_obsv = X_last_obsv[index]
         Mask = Mask[index]
         Delta = Delta[index]
+        X_last_obsv_b = X_last_obsv_b[index]
+        Delta_b = Delta_b[index]
+
         speed_sequences = np.expand_dims(speed_sequences, axis=1)
         X_last_obsv = np.expand_dims(X_last_obsv, axis=1)
         Mask = np.expand_dims(Mask, axis=1)
         Delta = np.expand_dims(Delta, axis=1)
-        dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta), axis=1)
+        X_last_obsv_b = np.expand_dims(X_last_obsv_b, axis=1)
+        Delta_b = np.expand_dims(Delta_b, axis=1)
+
+        dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta, X_last_obsv_b, Delta_b), axis=1)
 
     train_index = int(np.floor(sample_size * train_propotion))
     valid_index = int(np.floor(sample_size * (train_propotion + valid_propotion)))
