@@ -175,7 +175,10 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     loss_L1 = torch.nn.L1Loss()
 
     learning_rate = 0.0001
+    criterion = nn.MSELoss()
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
+    discriminator_optimizer = torch.optim.Adam(model.discriminator.parameters(), lr=learning_rate)
+    adversarial_loss = nn.BCELoss()
     use_gpu = torch.cuda.is_available()
 
     interval = 100
@@ -218,60 +221,30 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
                 inputs, labels = inputs, labels
 
             optimizer.zero_grad()
+            discriminator_optimizer.zero_grad()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.zero_grad(): {mem_allocated:.2f} MB"
-            #     )
+            # Forecasting
+            forecasts = model(inputs)
+            loss = criterion(forecasts, labels)
 
-            outputs = model(inputs)
+            # Adversarial training
+            real_labels = torch.ones(inputs.size(0), 1).cuda()
+            fake_labels = torch.zeros(inputs.size(0), 1).cuda()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after model(inputs): {mem_allocated:.2f} MB"
-            #     )
+            real_predictions = model.discriminator(labels)
+            fake_predictions = model.discriminator(forecasts)
 
-            if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
-            else:
-                full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
-                loss_train = loss_MSE(outputs, full_labels)
+            d_loss_real = adversarial_loss(real_predictions, real_labels)
+            d_loss_fake = adversarial_loss(fake_predictions, fake_labels)
+            d_loss = d_loss_real + d_loss_fake
+            d_loss.backward()
+            discriminator_optimizer.step()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss calculation: {mem_allocated:.2f} MB"
-            #     )
-
-            losses_train.append(loss_train.data)
-            losses_epoch_train.append(loss_train.data)
-
-            loss_train.backward()
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss_train.backward(): {mem_allocated:.2f} MB"
-            #     )
-
+            # Generator loss
+            g_loss = adversarial_loss(fake_predictions, real_labels)
+            total_loss = loss + g_loss
+            total_loss.backward()
             optimizer.step()
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.step(): {mem_allocated:.2f} MB"
-            #     )
-
-            del inputs, labels, outputs, loss_train
-            torch.cuda.empty_cache()
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after training step: {mem_allocated:.2f} MB"
-            #     )
 
             # validation
             model.eval()
@@ -455,6 +428,6 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet(input_dim, hidden_dim, output_dim, X_mean, output_last=True)
+    lgnet = LGnet(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)
     best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

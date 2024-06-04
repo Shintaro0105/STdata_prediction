@@ -14,8 +14,8 @@
 			"cudaVersion": 11.8
 		}
 	},
-	"onCreateCommand": "rye config --set-bool behavior.use-uv=true && rye sync",
-	"postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
+	// "onCreateCommand": "rye config --set-bool behavior.use-uv=true && rye sync",
+	// "postStartCommand": "git config --global --add safe.directory ${containerWorkspaceFolder}",
 	// "mounts": [
 	// 	{
 	// 		"source": "${localEnv:HOME}/.config/git",
