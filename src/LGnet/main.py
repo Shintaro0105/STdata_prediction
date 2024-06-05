@@ -162,7 +162,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     print("Model Structure: ", model)
     print("Start Training ... ")
 
-    model.cuda()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model.to(device)
 
     if type(model) == nn.modules.container.Sequential:
         output_last = model[-1].output_last
@@ -228,21 +230,29 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             loss = criterion(forecasts, labels)
 
             # Adversarial training
-            real_labels = torch.ones(inputs.size(0), 1).cuda()
-            fake_labels = torch.zeros(inputs.size(0), 1).cuda()
+            real_labels = torch.ones(forecasts.size(0), 5).to(device)
+            fake_labels = torch.zeros(forecasts.size(0), 5).to(device)
 
             real_predictions = model.discriminator(labels)
             fake_predictions = model.discriminator(forecasts)
 
+            # 入力データの確認
+            assert real_predictions.is_cuda, "real_predictions is not on CUDA"
+            assert real_labels.is_cuda, "real_labels is not on CUDA"
+            assert fake_predictions.is_cuda, "fake_predictions is not on CUDA"
+            assert fake_labels.is_cuda, "fake_labels is not on CUDA"
+            assert (real_labels == 1).all(), "real_labels contains values other than 1"
+            assert (fake_labels == 0).all(), "fake_labels contains values other than 0"
+
             d_loss_real = adversarial_loss(real_predictions, real_labels)
             d_loss_fake = adversarial_loss(fake_predictions, fake_labels)
-            d_loss = d_loss_real + d_loss_fake
+            d_loss = -d_loss_real + d_loss_fake
             d_loss.backward()
             discriminator_optimizer.step()
 
             # Generator loss
-            g_loss = adversarial_loss(fake_predictions, real_labels)
-            total_loss = loss + g_loss
+            g_loss = adversarial_loss(fake_predictions, fake_labels)
+            total_loss = loss - g_loss
             total_loss.backward()
             optimizer.step()
 

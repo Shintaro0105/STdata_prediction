@@ -95,17 +95,17 @@ class LSTMModule(nn.Module):
 
 
 class Discriminator(nn.Module):
-    def __init__(self, input_dim, hidden_dim, num_layers):
+    def __init__(self, input_dim, hidden_dim, k, num_layers):
         super(Discriminator, self).__init__()
         self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, 1)
+        self.fc = nn.Linear(hidden_dim, k)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
         if x.dim() == 2:
             x = x.unsqueeze(1)
         out, _ = self.lstm(x)
-        out = self.fc(out[:, -1, :])  # Take the output from the last time step
+        out = self.fc(out)  # Take the output from the last time step
         out = self.sigmoid(out)
         return out
 
@@ -115,11 +115,12 @@ class LGnet(nn.Module):
         super(LGnet, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
+        k_prime = 5
 
         # Define the LSTM gate layers
         self.memory_module = MemoryModule(input_size, memory_size)
         self.lstm_module = LSTMModule(input_size, hidden_size, output_size, num_layers)
-        self.discriminator = Discriminator(input_size, hidden_size, num_layers)
+        self.discriminator = Discriminator(input_size, hidden_size, k_prime, num_layers)  # noqa: E999
 
         # Other initializations
         self.gamma_z_l = FilterLinear(input_size, input_size, torch.eye(input_size))
