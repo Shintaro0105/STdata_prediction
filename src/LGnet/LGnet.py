@@ -94,19 +94,23 @@ class LSTMModule(nn.Module):
         return out, h, c
 
 
-class Discriminator(nn.Module):
-    def __init__(self, input_dim, hidden_dim, k, num_layers):
-        super(Discriminator, self).__init__()
-        self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers, batch_first=True)
-        self.fc = nn.Linear(hidden_dim, k)
-        self.sigmoid = nn.Sigmoid()
+class ConvDiscriminator(nn.Module):
+    def __init__(self, input_dim):
+        super(ConvDiscriminator, self).__init__()
+        self.conv1 = nn.Conv1d(input_dim, 64, kernel_size=3, stride=1, padding=1)
+        self.conv2 = nn.Conv1d(64, 128, kernel_size=3, stride=1, padding=1)
+        self.fc1 = nn.Linear(128, 1024)
+        self.fc2 = nn.Linear(1024, 1)
 
     def forward(self, x):
         if x.dim() == 2:
             x = x.unsqueeze(1)
-        out, _ = self.lstm(x)
-        out = self.fc(out)  # Take the output from the last time step
-        out = self.sigmoid(out)
+        x = x.permute(0, 2, 1)  # Change shape to (batch_size, features, sequence_length)
+        out = F.relu(self.conv1(x))
+        out = F.relu(self.conv2(out))
+        out = out.mean(2)  # Global Average Pooling
+        out = F.relu(self.fc1(out))
+        out = self.fc2(out)
         return out
 
 
@@ -115,12 +119,11 @@ class LGnet(nn.Module):
         super(LGnet, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        k_prime = 5
 
         # Define the LSTM gate layers
         self.memory_module = MemoryModule(input_size, memory_size)
         self.lstm_module = LSTMModule(input_size, hidden_size, output_size, num_layers)
-        self.discriminator = Discriminator(input_size, hidden_size, k_prime, num_layers)  # noqa: E999
+        self.discriminator = ConvDiscriminator(input_size)  # noqa: E999
 
         # Other initializations
         self.gamma_z_l = FilterLinear(input_size, input_size, torch.eye(input_size))
@@ -147,9 +150,21 @@ class LGnet(nn.Module):
 
         x_i = self.lstm_module.fc(h.squeeze())
 
+        # print("z")
+        # print(z)
+        # print("z_prime")
+        # print(z_prime)
+        # print("x_i")
+        # print(x_i)
+
         local_statistics = self.q_for_memory(torch.cat((z, z_prime, x_i), 1))
         global_dynamics = self.memory_module(local_statistics)
         global_dynamics = global_dynamics.unsqueeze(1)
+
+        # print("local")
+        # print(local_statistics)
+        # print("global")
+        # print(global_dynamics)
 
         outputs, h, c = self.lstm_module(global_dynamics, h, c)
 
@@ -167,6 +182,19 @@ class LGnet(nn.Module):
         X_last_obsv_b = torch.squeeze(input[:, 4, :, :])
         Delta_b = torch.squeeze(input[:, 5, :, :])
 
+        # print("X shape:", X.shape)
+        # print("X values:", X)
+        # print("X_last_obsv shape:", X_last_obsv.shape)
+        # print("X_last_obsv values:", X_last_obsv)
+        # print("Mask shape:", Mask.shape)
+        # print("Mask values:", Mask)
+        # print("Delta shape:", Delta.shape)
+        # print("Delta values:", Delta)
+        # print("X_last_obsv_b shape:", X_last_obsv_b.shape)
+        # print("X_last_obsv_b values:", X_last_obsv_b)
+        # print("Delta_b shape:", Delta_b.shape)
+        # print("Delta_b values:", Delta_b)
+
         outputs = None
         for i in range(step_size):
             outputs, Hidden_State, Cell_State = self.step(
@@ -180,6 +208,7 @@ class LGnet(nn.Module):
                 torch.squeeze(Delta[:, i : i + 1, :]),
                 torch.squeeze(Delta_b[:, i : i + 1, :]),
             )
+            # print(outputs)
 
         if self.output_last:
             return outputs[:, -1, :]

@@ -178,11 +178,8 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    lambda_dis = 0.1
-    criterion = nn.MSELoss()
-    optimizer_G = torch.optim.Adam(model.parameters(), lr=1e-4)
-    optimizer_D = torch.optim.RMSprop(model.discriminator.parameters(), lr=5e-5)
-    adversarial_loss = wasserstein_loss
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
     use_gpu = torch.cuda.is_available()
 
     interval = 100
@@ -227,42 +224,20 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             # print(inputs)
             model.train()
 
-            # Train Discriminator
-            optimizer_D.zero_grad()
-
-            real_predictions = model.discriminator(labels)
-            fake_predictions = model.discriminator(model(inputs).detach())
-
-            d_loss_real = adversarial_loss(real_predictions, -torch.ones_like(real_predictions))
-            d_loss_fake = adversarial_loss(fake_predictions, torch.ones_like(fake_predictions))
-
-            d_loss = -d_loss_real + d_loss_fake
-
-            d_loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(model.discriminator.parameters(), max_norm=1.0)
-            optimizer_D.step()
-
-            optimizer_G.zero_grad()
+            optimizer.zero_grad()
 
             # Forecasting
             forecasts = model(inputs)
 
-            # print(forecasts)
             loss = criterion(forecasts, labels)
 
-            forecasts_prediction = model.discriminator(forecasts.detach())
-            g_loss_forecast = adversarial_loss(forecasts_prediction, -torch.ones_like(real_predictions))
+            losses_train.append(loss.data)
+            losses_epoch_train.append(loss.data)
 
-            g_loss = loss - lambda_dis * g_loss_forecast
+            loss.backward()
 
-            losses_train.append(g_loss.data)
-            losses_epoch_train.append(g_loss.data)
-
-            g_loss.backward()
-
-            torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
-            optimizer_G.step()
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+            optimizer.step()
 
             # print(
             #     f"Epoch [{epoch}]  D Loss Real: {d_loss_real.item():.4f}  D Loss Fake: {d_loss_fake.item():.4f}  D Loss: {d_loss.item():.4f}"
