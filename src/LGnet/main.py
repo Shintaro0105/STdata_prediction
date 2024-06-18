@@ -248,6 +248,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             # Forecasting
             forecasts = model(inputs)
 
+            # print(f"forecasts type: {forecasts.shape}")
+            # print(f"labels type: {labels.shape}")
+
             # print(forecasts)
             loss = criterion(forecasts, labels)
 

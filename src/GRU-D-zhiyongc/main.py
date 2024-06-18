@@ -208,6 +208,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             outputs = model(inputs)
 
+            # print(f"forecasts type: {outputs.shape}")
+            # print(f"labels type: {labels.shape}")
+
             # if use_gpu:
             #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
             #     print(
