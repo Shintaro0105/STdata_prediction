@@ -133,12 +133,10 @@ class LGnet_advmem(nn.Module):
         c = f * c + i * c_tilde
         h = o * F.tanh(c)
 
-        outputs = self.fc(h)
-
         # print("outputs")
         # print(outputs.shape)
 
-        return outputs, h, c
+        return h, c
 
     def forward(self, input):
         batch_size = input.size(0)
@@ -167,7 +165,7 @@ class LGnet_advmem(nn.Module):
 
         outputs = None
         for i in range(step_size):
-            output, Hidden_State, Cell_State = self.step(
+            Hidden_State, Cell_State = self.step(
                 torch.squeeze(X[:, i : i + 1, :]),
                 torch.squeeze(X_last_obsv[:, i : i + 1, :]),
                 torch.squeeze(X_last_obsv_b[:, i : i + 1, :]),
@@ -178,14 +176,12 @@ class LGnet_advmem(nn.Module):
                 torch.squeeze(Delta[:, i : i + 1, :]),
                 torch.squeeze(Delta_b[:, i : i + 1, :]),
             )
+            # print(outputs)
+
             if outputs is None:
-                outputs = output.unsqueeze(1)
+                outputs = self.fc(Hidden_State).unsqueeze(1)
             else:
-                outputs = torch.cat((outputs, output.unsqueeze(1)), 1)
-
-            torch.cuda.empty_cache()
-
-        # print(outputs.shape)
+                outputs = torch.cat((outputs, self.fc(Hidden_State).unsqueeze(1)), 1)
 
         if self.output_last:
             return outputs[:, -1, :]

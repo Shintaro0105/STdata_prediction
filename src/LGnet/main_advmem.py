@@ -37,7 +37,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.split(speed_matrix, 16)
+    speed_matrix_s = np.split(speed_matrix, 8)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -178,8 +178,8 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    criterion = torch.nn.MSELoss()
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-4, alpha=0.99)
+    learning_rate = 0.0001
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
     use_gpu = torch.cuda.is_available()
 
     interval = 100
@@ -225,14 +225,18 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             optimizer.zero_grad()
 
             # Forecasting
-            forecasts = model(inputs)
+            outputs = model(inputs)
 
-            loss = criterion(forecasts, labels)
+            if output_last:
+                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
+            else:
+                full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
+                loss_train = loss_MSE(outputs, full_labels)
 
-            losses_train.append(loss.data)
-            losses_epoch_train.append(loss.data)
+            losses_train.append(loss_train.data)
+            losses_epoch_train.append(loss_train.data)
 
-            loss.backward()
+            loss_train.backward()
 
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
