@@ -133,6 +133,9 @@ class GRUD(nn.Module):
         x = mask * x + (1 - mask) * (delta_x * x_last_obsv + (1 - delta_x) * x_mean)
         h = delta_h * h
 
+        # print("h")
+        # print(h.shape)
+
         combined = torch.cat((x, h, mask), 1)
         z = F.sigmoid(self.zl(combined))
         r = F.sigmoid(self.rl(combined))

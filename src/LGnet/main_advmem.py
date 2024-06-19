@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sat May 12 16:49:49 2018
-
-@author: Zhiyong
-"""
-
 import time
 
 import numpy as np
@@ -12,7 +5,11 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
-from GRUD import *
+from LGnet_advmem import *
+
+
+def wasserstein_loss(y_pred, y_true):
+    return torch.mean(y_pred * y_true)
 
 
 def PrepareDataset(
@@ -75,9 +72,15 @@ def PrepareDataset(
         for i in range(1, S.shape[1]):
             Delta[:, i, :] = S[:, i, :] - S[:, i - 1, :]
 
+        # Calculate Delta_b (backward direction)
+        Delta_b = np.zeros_like(speed_sequences)
+        for i in range(0, S.shape[1] - 1):
+            Delta_b[:, i, :] = S[:, i + 1, :] - S[:, i, :]
+
         missing_index = np.where(Mask == 0)
 
         X_last_obsv = np.copy(speed_sequences)
+        X_last_obsv_b = np.copy(speed_sequences)
         for idx in range(missing_index[0].shape[0]):
             i = missing_index[0][idx]
             j = missing_index[1][idx]
@@ -86,7 +89,19 @@ def PrepareDataset(
                 Delta[i, j + 1, k] = Delta[i, j + 1, k] + Delta[i, j, k]
             if j != 0:
                 X_last_obsv[i, j, k] = X_last_obsv[i, j - 1, k]  # last observation
+
         Delta = Delta / Delta.max()  # normalize
+
+        for idx in range(missing_index[0].shape[0], -1):
+            i = missing_index[0][idx]
+            j = missing_index[1][idx]
+            k = missing_index[2][idx]
+            if j != 0 and j != 9:
+                Delta_b[i, j - 1, k] += Delta_b[i, j, k] + Delta_b[i, j - 1, k]
+            if j != 9:
+                X_last_obsv_b[i, j, k] = X_last_obsv_b[i, j + 1, k]
+
+        Delta_b = Delta_b / Delta_b.max()  # normalize
 
     # shuffle and split the dataset to training and testing datasets
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
@@ -102,11 +117,17 @@ def PrepareDataset(
         X_last_obsv = X_last_obsv[index]
         Mask = Mask[index]
         Delta = Delta[index]
+        X_last_obsv_b = X_last_obsv_b[index]
+        Delta_b = Delta_b[index]
+
         speed_sequences = np.expand_dims(speed_sequences, axis=1)
         X_last_obsv = np.expand_dims(X_last_obsv, axis=1)
         Mask = np.expand_dims(Mask, axis=1)
         Delta = np.expand_dims(Delta, axis=1)
-        dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta), axis=1)
+        X_last_obsv_b = np.expand_dims(X_last_obsv_b, axis=1)
+        Delta_b = np.expand_dims(Delta_b, axis=1)
+
+        dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta, X_last_obsv_b, Delta_b), axis=1)
 
     train_index = int(np.floor(sample_size * train_propotion))
     valid_index = int(np.floor(sample_size * (train_propotion + valid_propotion)))
@@ -143,7 +164,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     print("Model Structure: ", model)
     print("Start Training ... ")
 
-    model.cuda()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model.to(device)
 
     if type(model) == nn.modules.container.Sequential:
         output_last = model[-1].output_last
@@ -155,8 +178,8 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    learning_rate = 0.0001
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
+    criterion = torch.nn.MSELoss()
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=1e-4, alpha=0.99)
     use_gpu = torch.cuda.is_available()
 
     interval = 100
@@ -172,6 +195,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     is_best_model = 0
     patient_epoch = 0
     for epoch in range(num_epochs):
+        model.train()
         # if use_gpu:
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at start of epoch: {mem_allocated:.2f} MB")
@@ -200,62 +224,25 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             optimizer.zero_grad()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.zero_grad(): {mem_allocated:.2f} MB"
-            #     )
+            # Forecasting
+            forecasts = model(inputs)
 
-            outputs = model(inputs)
+            loss = criterion(forecasts, labels)
 
-            # print(f"forecasts type: {outputs.shape}")
-            # print(f"labels type: {labels.shape}")
+            losses_train.append(loss.data)
+            losses_epoch_train.append(loss.data)
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after model(inputs): {mem_allocated:.2f} MB"
-            #     )
+            loss.backward()
 
-            if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
-            else:
-                full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
-                loss_train = loss_MSE(outputs, full_labels)
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss calculation: {mem_allocated:.2f} MB"
-            #     )
-
-            losses_train.append(loss_train.data)
-            losses_epoch_train.append(loss_train.data)
-
-            loss_train.backward()
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss_train.backward(): {mem_allocated:.2f} MB"
-            #     )
-
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.step(): {mem_allocated:.2f} MB"
-            #     )
-
-            del inputs, labels, outputs, loss_train
-            torch.cuda.empty_cache()
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after training step: {mem_allocated:.2f} MB"
-            #     )
+            # print(
+            #     f"Epoch [{epoch}]  D Loss Real: {d_loss_real.item():.4f}  D Loss Fake: {d_loss_fake.item():.4f}  D Loss: {d_loss.item():.4f}"
+            # )
+            # print(
+            #     f"Forecasting Loss: {loss.item():.4f}  G Loss Forecast: {g_loss_forecast.item():.4f}  G Loss: {g_loss.item():.4f}"
+            # )
 
             # validation
             model.eval()
@@ -439,6 +426,6 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    grud = GRUD(input_dim, hidden_dim, output_dim, X_mean, output_last=True)
-    best_grud, losses_grud = Train_Model(grud, train_dataloader, valid_dataloader)
-    [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_grud, test_dataloader, max_speed)
+    lgnet = LGnet_advmem(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)
+    best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
+    [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
