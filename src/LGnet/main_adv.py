@@ -37,7 +37,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.split(speed_matrix, 8)
+    speed_matrix_s = np.split(speed_matrix, 4)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -428,7 +428,7 @@ if __name__ == "__main__":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=64, masking=True
+        speed_matrix, BATCH_SIZE=32, masking=True
     )
 
     inputs, labels = next(iter(train_dataloader))

@@ -5,8 +5,8 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
-from LGnet_mem import *
 from Discriminator import *
+from LGnet_mem import *
 
 
 def wasserstein_loss(y_pred, y_true):
@@ -161,7 +161,9 @@ def PrepareDataset(
     return train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean
 
 
-def Train_Model(model, discriminator, train_dataloader, valid_dataloader, num_epochs=300, patience=10, min_delta=0.00001):
+def Train_Model(
+    model, discriminator, train_dataloader, valid_dataloader, num_epochs=300, patience=10, min_delta=0.00001
+):
     print("Model Structure: ", model)
     print("Start Training ... ")
 
@@ -233,14 +235,14 @@ def Train_Model(model, discriminator, train_dataloader, valid_dataloader, num_ep
 
             optimizer_adv.zero_grad()
 
-            forecasts = model(inputs)
+            forecasts, generation = model(inputs)
             real_predictions = discriminator(labels)
-            fake_predictions = discriminator(forecasts.detach())
+            fake_predictions = discriminator(generation.detach())
 
             d_loss_real = adversarial_loss(real_predictions, -torch.ones_like(real_predictions))
             d_loss_fake = adversarial_loss(fake_predictions, torch.ones_like(fake_predictions))
 
-            d_loss = -d_loss_real + d_loss_fake
+            d_loss = d_loss_real + d_loss_fake
 
             d_loss.backward()
 
@@ -250,7 +252,7 @@ def Train_Model(model, discriminator, train_dataloader, valid_dataloader, num_ep
             optimizer.zero_grad()
 
             # Forecasting
-            outputs = model(inputs)
+            outputs, generation = model(inputs)
 
             forecasts_prediction = discriminator(outputs.detach())
             g_loss_forecast = adversarial_loss(forecasts_prediction, -torch.ones_like(real_predictions))
@@ -259,7 +261,7 @@ def Train_Model(model, discriminator, train_dataloader, valid_dataloader, num_ep
                 loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) - lambda_dis * g_loss_forecast
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
-                loss_train = loss_MSE(outputs, full_labels) - lambda_dis * g_loss_forecast
+                loss_train = loss_MSE(outputs, full_labels) + lambda_dis * g_loss_forecast
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
@@ -294,7 +296,7 @@ def Train_Model(model, discriminator, train_dataloader, valid_dataloader, num_ep
                 inputs_val, labels_val = inputs_val, labels_val
 
             with torch.no_grad():
-                outputs_val = model(inputs_val)
+                outputs_val, generation = model(inputs_val)
 
                 if output_last:
                     loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val))
@@ -397,7 +399,7 @@ def Test_Model(model, test_dataloader, max_speed):
         else:
             inputs, labels = inputs, labels
 
-        outputs = model(inputs)
+        outputs, generation = model(inputs)
 
         loss_MSE = torch.nn.MSELoss()
         loss_L1 = torch.nn.L1Loss()
