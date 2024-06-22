@@ -239,10 +239,12 @@ def Train_Model(
             real_predictions = discriminator(labels)
             fake_predictions = discriminator(generation.detach())
 
-            d_loss_real = adversarial_loss(real_predictions, -torch.ones_like(real_predictions))
+            d_loss_real = adversarial_loss(real_predictions, torch.ones_like(real_predictions))
             d_loss_fake = adversarial_loss(fake_predictions, torch.ones_like(fake_predictions))
 
-            d_loss = d_loss_real + d_loss_fake
+            d_loss = -d_loss_real + d_loss_fake
+            # print(f"d_loss_real: {d_loss_real}")
+            # print(f"d_loss_fake: {d_loss_fake}")
 
             d_loss.backward()
 
@@ -254,14 +256,14 @@ def Train_Model(
             # Forecasting
             outputs, generation = model(inputs)
 
-            forecasts_prediction = discriminator(outputs.detach())
-            g_loss_forecast = adversarial_loss(forecasts_prediction, -torch.ones_like(real_predictions))
+            forecasts_prediction = discriminator(generation.detach())
+            g_loss_forecast = adversarial_loss(forecasts_prediction, torch.ones_like(real_predictions))
 
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) + lambda_dis * g_loss_forecast
+                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) - lambda_dis * g_loss_forecast
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
-                loss_train = loss_MSE(outputs, full_labels) + lambda_dis * g_loss_forecast
+                loss_train = loss_MSE(outputs, full_labels) - lambda_dis * g_loss_forecast
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)

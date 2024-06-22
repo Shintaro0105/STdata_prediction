@@ -215,6 +215,9 @@ def Train_Model(
         losses_epoch_train = []
         losses_epoch_valid = []
 
+        losses_epoch_d_loss_real = []
+        losses_epoch_d_loss_fake = []
+
         # if use_gpu:
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
@@ -239,10 +242,15 @@ def Train_Model(
             real_predictions = discriminator(labels)
             fake_predictions = discriminator(generation.detach())
 
-            d_loss_real = adversarial_loss(real_predictions, -torch.ones_like(real_predictions))
+            d_loss_real = adversarial_loss(real_predictions, torch.ones_like(real_predictions))
             d_loss_fake = adversarial_loss(fake_predictions, torch.ones_like(fake_predictions))
 
-            d_loss = d_loss_real + d_loss_fake
+            d_loss = -d_loss_real + d_loss_fake
+            # print(f"d_loss_real: {d_loss_real}")
+            # print(f"d_loss_fake: {d_loss_fake}")
+
+            losses_epoch_d_loss_real.append(d_loss_real.data)
+            losses_epoch_d_loss_fake.append(d_loss_fake.data)
 
             d_loss.backward()
 
@@ -254,17 +262,17 @@ def Train_Model(
             # Forecasting
             outputs, generations = model(inputs)
 
-            forecasts_prediction = discriminator(outputs.detach())
-            g_loss_forecast = adversarial_loss(forecasts_prediction, -torch.ones_like(real_predictions))
+            forecasts_prediction = discriminator(generations.detach())
+            g_loss_forecast = adversarial_loss(forecasts_prediction, torch.ones_like(forecasts_prediction))
 
             # print(f"generations: {generations.shape}")
             # print(f"forecasts_prediction: {forecasts_prediction.shape}")
 
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) + lambda_dis * g_loss_forecast
+                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) - lambda_dis * g_loss_forecast
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
-                loss_train = loss_MSE(outputs, full_labels) + lambda_dis * g_loss_forecast
+                loss_train = loss_MSE(outputs, full_labels) - lambda_dis * g_loss_forecast
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
@@ -327,6 +335,13 @@ def Train_Model(
         losses_epochs_train.append(avg_losses_epoch_train)
         losses_epochs_valid.append(avg_losses_epoch_valid)
 
+        avg_losses_epoch_d_loss_real = sum(losses_epoch_d_loss_real).cpu().numpy() / float(
+            len(losses_epoch_d_loss_real)
+        )
+        avg_losses_epoch_d_loss_fake = sum(losses_epoch_d_loss_fake).cpu().numpy() / float(
+            len(losses_epoch_d_loss_fake)
+        )
+
         # Early Stopping
         if epoch == 0:
             is_best_model = 1
@@ -350,9 +365,11 @@ def Train_Model(
         # Print training parameters
         cur_time = time.time()
         print(
-            "Epoch: {}, train_loss: {}, valid_loss: {}, time: {}, best model: {}".format(
+            "Epoch: {}, train_loss: {}, d_loss_real: {}, d_loss_fake: {}, valid_loss: {}, time: {}, best model: {}".format(
                 epoch,
                 np.around(avg_losses_epoch_train, decimals=8),
+                np.around(avg_losses_epoch_d_loss_real, decimals=8),
+                np.around(avg_losses_epoch_d_loss_fake, decimals=8),
                 np.around(avg_losses_epoch_valid, decimals=8),
                 np.around([cur_time - pre_time], decimals=2),
                 is_best_model,
