@@ -38,7 +38,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.split(speed_matrix, 8)
+    speed_matrix_s = np.split(speed_matrix, 16)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -258,7 +258,7 @@ def Train_Model(
             g_loss_forecast = adversarial_loss(forecasts_prediction, -torch.ones_like(real_predictions))
 
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) - lambda_dis * g_loss_forecast
+                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) + lambda_dis * g_loss_forecast
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels) + lambda_dis * g_loss_forecast

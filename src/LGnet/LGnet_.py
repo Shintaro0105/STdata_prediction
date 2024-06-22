@@ -203,7 +203,38 @@ class LGnet_(nn.Module):
                 outputs = torch.cat((outputs, self.fc(Hidden_State).unsqueeze(1)), 1)
 
         if self.output_last:
-            return outputs[:, -1, :]
+            h = Hidden_State
+            c = Cell_State
+            forecasts = outputs[:, -1, :].squeeze()
+
+            local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
+
+            s_i = F.softmax(torch.matmul(self.memory, local_statistics.unsqueeze(-1)).squeeze(-1), dim=-1)
+            global_dynamics = torch.matmul(s_i, self.memory)
+
+            # print("local")
+            # print(local_statistics.shape)
+            # print("s_i")
+            # print(s_i.shape)
+            # print("global")
+            # print(global_dynamics.shape)
+
+            # print("h")
+            # print(h.shape)
+
+            combined = torch.cat((global_dynamics, h), 1)
+
+            # print("combined")
+            # print(combined.shape)
+
+            i = F.sigmoid(self.il(combined))
+            f = F.sigmoid(self.fl(combined))
+            o = F.sigmoid(self.ol(combined))
+            c_tilde = F.tanh(self.cl(combined))
+            c = f * c + i * c_tilde
+            h = o * F.tanh(c)
+
+            return outputs[:, -1, :], self.fc(h).unsqueeze(1)
         else:
             return outputs
 
