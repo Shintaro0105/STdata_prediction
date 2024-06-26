@@ -182,7 +182,7 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    lambda_dis = 0.1
+    lambda_dis = 0
     learning_rate = 0.0001
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
@@ -215,6 +215,9 @@ def Train_Model(
         losses_epoch_train = []
         losses_epoch_valid = []
 
+        losses_epoch_d_loss_real = []
+        losses_epoch_d_loss_fake = []
+
         # if use_gpu:
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
@@ -246,7 +249,12 @@ def Train_Model(
             # print(f"d_loss_real: {d_loss_real}")
             # print(f"d_loss_fake: {d_loss_fake}")
 
+            losses_epoch_d_loss_real.append(d_loss_real.data)
+            losses_epoch_d_loss_fake.append(d_loss_fake.data)
+
             d_loss.backward()
+
+            optimizer_adv.step()
 
             # print("forecasts")
             # print(forecasts.shape)
@@ -326,6 +334,13 @@ def Train_Model(
         losses_epochs_train.append(avg_losses_epoch_train)
         losses_epochs_valid.append(avg_losses_epoch_valid)
 
+        avg_losses_epoch_d_loss_real = sum(losses_epoch_d_loss_real).cpu().numpy() / float(
+            len(losses_epoch_d_loss_real)
+        )
+        avg_losses_epoch_d_loss_fake = sum(losses_epoch_d_loss_fake).cpu().numpy() / float(
+            len(losses_epoch_d_loss_fake)
+        )
+
         # Early Stopping
         if epoch == 0:
             is_best_model = 1
@@ -349,9 +364,11 @@ def Train_Model(
         # Print training parameters
         cur_time = time.time()
         print(
-            "Epoch: {}, train_loss: {}, valid_loss: {}, time: {}, best model: {}".format(
+            "Epoch: {}, train_loss: {}, d_loss_real: {}, d_loss_fake: {}, valid_loss: {}, time: {}, best model: {}".format(
                 epoch,
                 np.around(avg_losses_epoch_train, decimals=8),
+                np.around(avg_losses_epoch_d_loss_real, decimals=8),
+                np.around(avg_losses_epoch_d_loss_fake, decimals=8),
                 np.around(avg_losses_epoch_valid, decimals=8),
                 np.around([cur_time - pre_time], decimals=2),
                 is_best_model,

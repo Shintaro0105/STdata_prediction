@@ -37,7 +37,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.split(speed_matrix, 4)
+    speed_matrix_s = np.split(speed_matrix, 16)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -232,7 +232,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             if output_last:
                 loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
-            else:
+            else:   
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels)
 

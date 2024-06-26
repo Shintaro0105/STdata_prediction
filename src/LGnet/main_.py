@@ -254,6 +254,8 @@ def Train_Model(
 
             d_loss.backward()
 
+            optimizer_adv.step()
+
             # print("forecasts")
             # print(forecasts.shape)
 

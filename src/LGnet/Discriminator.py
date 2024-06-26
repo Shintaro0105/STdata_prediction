@@ -23,4 +23,5 @@ class Discriminator(nn.Module):
         out = out.mean(2)  # Global Average Pooling
         out = F.relu(self.fc1(out))
         out = self.fc2(out)
+        out = torch.sigmoid(out) 
         return out
