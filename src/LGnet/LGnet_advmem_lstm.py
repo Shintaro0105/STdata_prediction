@@ -64,32 +64,21 @@ class FilterLinear(nn.Module):
         )
 
 
-class LGnet_adv(nn.Module):
-    def __init__(
-        self, input_size, hidden_size, output_size, X_mean, memory_size, memory_dim, num_layers, output_last=False
-    ):
-        super(LGnet_adv, self).__init__()
+class LGnet_advmem_lstm(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size, X_mean, memory_size, num_layers, output_last=False):
+        super(LGnet_advmem_lstm, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
-        self.memory_size = memory_size
-        self.memory_dim = memory_dim
 
         # Define the LSTM gate layers
-        self.il = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.fl = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.ol = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.cl = nn.Linear(memory_dim + hidden_size, hidden_size)
-
+        self.lstm = nn.LSTM(input_size, hidden_size, num_layers, batch_first=True)
         self.fc = nn.Linear(hidden_size, output_size)
 
         # Other initializations
         self.gamma_z_l = FilterLinear(input_size, input_size, torch.eye(input_size))
         self.gamma_z_prime_l = FilterLinear(input_size, input_size, torch.eye(input_size))
 
-        self.q_for_memory = nn.Linear(2 * input_size + output_size, memory_dim)
-
-        # Initialize memory component
-        self.memory = nn.Parameter(torch.Tensor(memory_size, memory_dim))
+        self.q_for_memory = nn.Linear(2 * input_size + output_size, input_size)
 
         self.output_last = output_last
 
@@ -119,43 +108,23 @@ class LGnet_adv(nn.Module):
 
         local_statistics = self.q_for_memory(torch.cat((z, z_prime, x_i), 1))
 
-        # Calculate similarity scores
-        s_i = F.softmax(torch.matmul(self.memory, local_statistics.unsqueeze(-1)).squeeze(-1), dim=-1)
-
-        # print("memory")
-        # print(self.memory.shape)
-        # print("local")
-        # print(local_statistics.unsqueeze(-1).shape)
-
-        # Retrieve global temporal dynamics
-        global_dynamics = torch.matmul(s_i, self.memory)
-
         # print("local")
         # print(local_statistics.shape)
-        # print("s_i")
-        # print(s_i.shape)
         # print("global")
-        # print(global_dynamics.shape)
+        # print(global_dynamics)
 
         # print("h")
         # print(h.shape)
 
-        combined = torch.cat((global_dynamics, h), 1)
+        local_statistics = local_statistics.unsqueeze(1)
+        h = h.unsqueeze(0)
+        c = c.unsqueeze(0)
 
-        # print("combined")
-        # print(combined.shape)
-
-        i = F.sigmoid(self.il(combined))
-        f = F.sigmoid(self.fl(combined))
-        o = F.sigmoid(self.ol(combined))
-        c_tilde = F.tanh(self.cl(combined))
-        c = f * c + i * c_tilde
-        h = o * F.tanh(c)
-
+        outputs, (h, c) = self.lstm(local_statistics, (h, c))
         # print("outputs")
         # print(outputs.shape)
 
-        return h, c
+        return h.squeeze(), c.squeeze()
 
     def forward(self, input):
         batch_size = input.size(0)

@@ -7,10 +7,28 @@ import torch.nn as nn
 import torch.utils.data as utils
 from Discriminator import *
 from LGnet_ import *
+import matplotlib.pyplot as plt
 
 
 def wasserstein_loss(y_pred, y_true):
     return torch.mean(y_pred * y_true)
+
+def plot_losses_combined(losses_train, losses_valid, losses_d_real, losses_d_fake, filename):
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(losses_train, label='Training Loss')
+    plt.plot(losses_valid, label='Validation Loss')
+    plt.plot(losses_d_real, label='Discriminator Real Loss')
+    plt.plot(losses_d_fake, label='Discriminator Fake Loss')
+
+    plt.title('Losses Over Epochs')
+    plt.xlabel('Epoch')
+    plt.ylabel('Loss')
+    plt.legend()
+    plt.grid(True)
+    
+    plt.savefig(filename)
+    plt.show()
 
 
 def PrepareDataset(
@@ -194,6 +212,8 @@ def Train_Model(
     losses_valid = []
     losses_epochs_train = []
     losses_epochs_valid = []
+    losses_epochs_d_loss_real = []
+    losses_epochs_d_loss_fake = []
 
     cur_time = time.time()
     pre_time = time.time()
@@ -343,6 +363,8 @@ def Train_Model(
         avg_losses_epoch_d_loss_fake = sum(losses_epoch_d_loss_fake).cpu().numpy() / float(
             len(losses_epoch_d_loss_fake)
         )
+        losses_epochs_d_loss_real.append(avg_losses_epoch_d_loss_real)
+        losses_epochs_d_loss_fake.append(avg_losses_epoch_d_loss_fake)
 
         # Early Stopping
         if epoch == 0:
@@ -382,6 +404,8 @@ def Train_Model(
         if use_gpu:
             mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
             print(f"Epoch {epoch}: GPU memory allocated at end of epoch: {mem_allocated:.2f} MB")
+
+    plot_losses_combined(losses_epochs_train, losses_epochs_valid, losses_epochs_d_loss_real, losses_epochs_d_loss_fake, 'combined_losses.png')
 
     return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
 

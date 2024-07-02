@@ -178,7 +178,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    learning_rate = 0.0001
+    learning_rate = 0.0005
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     use_gpu = torch.cuda.is_available()
 
@@ -232,7 +232,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             if output_last:
                 loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
-            else:   
+            else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels)
 
@@ -434,11 +434,11 @@ if __name__ == "__main__":
     inputs, labels = next(iter(train_dataloader))
     [batch_size, type_size, step_size, fea_size] = inputs.size()
     input_dim = fea_size
-    hidden_dim = 32
+    hidden_dim = fea_size
     output_dim = fea_size
 
     lgnet = LGnet_adv(
-        input_dim, hidden_dim, output_dim, X_mean, memory_size=32, memory_dim=128, num_layers=1, output_last=True
+        input_dim, hidden_dim, output_dim, X_mean, memory_size=16, memory_dim=128, num_layers=1, output_last=True
     )
     best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

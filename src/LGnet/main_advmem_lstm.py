@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
-from LGnet_advmem import *
+from LGnet_advmem_lstm import *
 
 
 def wasserstein_loss(y_pred, y_true):
@@ -212,6 +212,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
 
         for data in train_dataloader:
+            model.train()
             inputs, labels = data
 
             if inputs.shape[0] != batch_size:
@@ -427,9 +428,9 @@ if __name__ == "__main__":
     inputs, labels = next(iter(train_dataloader))
     [batch_size, type_size, step_size, fea_size] = inputs.size()
     input_dim = fea_size
-    hidden_dim = 64
+    hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet_advmem(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)
+    lgnet = LGnet_advmem_lstm(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)
     best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
