@@ -1,5 +1,6 @@
 import time
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
@@ -7,26 +8,26 @@ import torch.nn as nn
 import torch.utils.data as utils
 from Discriminator import *
 from LGnet_ import *
-import matplotlib.pyplot as plt
 
 
 def wasserstein_loss(y_pred, y_true):
     return torch.mean(y_pred * y_true)
 
+
 def plot_losses_combined(losses_train, losses_valid, losses_d_real, losses_d_fake, filename):
     plt.figure(figsize=(10, 6))
 
-    plt.plot(losses_train, label='Training Loss')
-    plt.plot(losses_valid, label='Validation Loss')
-    plt.plot(losses_d_real, label='Discriminator Real Loss')
-    plt.plot(losses_d_fake, label='Discriminator Fake Loss')
+    plt.plot(losses_train, label="Training Loss")
+    plt.plot(losses_valid, label="Validation Loss")
+    plt.plot(losses_d_real, label="Discriminator Real Loss")
+    plt.plot(losses_d_fake, label="Discriminator Fake Loss")
 
-    plt.title('Losses Over Epochs')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
+    plt.title("Losses Over Epochs")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
     plt.legend()
     plt.grid(True)
-    
+
     plt.savefig(filename)
     plt.show()
 
@@ -200,8 +201,8 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    lambda_dis = 0.1
-    learning_rate = 0.0001
+    lambda_dis = 1.0
+    learning_rate = 0.0005
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
     adversarial_loss = wasserstein_loss
@@ -405,7 +406,13 @@ def Train_Model(
             mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
             print(f"Epoch {epoch}: GPU memory allocated at end of epoch: {mem_allocated:.2f} MB")
 
-    plot_losses_combined(losses_epochs_train, losses_epochs_valid, losses_epochs_d_loss_real, losses_epochs_d_loss_fake, 'combined_losses.png')
+    plot_losses_combined(
+        losses_epochs_train,
+        losses_epochs_valid,
+        losses_epochs_d_loss_real,
+        losses_epochs_d_loss_fake,
+        "combined_losses.png",
+    )
 
     return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
 
@@ -501,13 +508,13 @@ if __name__ == "__main__":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=64, masking=True
+        speed_matrix, BATCH_SIZE=32, masking=True
     )
 
     inputs, labels = next(iter(train_dataloader))
     [batch_size, type_size, step_size, fea_size] = inputs.size()
     input_dim = fea_size
-    hidden_dim = 32
+    hidden_dim = fea_size
     output_dim = fea_size
 
     lgnet = LGnet_(

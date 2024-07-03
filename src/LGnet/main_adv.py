@@ -438,7 +438,7 @@ if __name__ == "__main__":
     output_dim = fea_size
 
     lgnet = LGnet_adv(
-        input_dim, hidden_dim, output_dim, X_mean, memory_size=16, memory_dim=128, num_layers=1, output_last=True
+        input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
     )
     best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

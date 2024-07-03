@@ -427,7 +427,7 @@ if __name__ == "__main__":
     inputs, labels = next(iter(train_dataloader))
     [batch_size, type_size, step_size, fea_size] = inputs.size()
     input_dim = fea_size
-    hidden_dim = 64
+    hidden_dim = fea_size
     output_dim = fea_size
 
     lgnet = LGnet_advmem(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)

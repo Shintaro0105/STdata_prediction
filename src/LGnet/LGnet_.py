@@ -89,7 +89,7 @@ class LGnet_(nn.Module):
         self.q_for_memory = nn.Linear(2 * input_size + output_size, memory_dim)
 
         # Initialize memory component
-        self.memory = nn.Parameter(torch.rand(memory_size, memory_dim))
+        self.memory = nn.Parameter(torch.Tensor(memory_size, memory_dim))
 
         self.output_last = output_last
 
