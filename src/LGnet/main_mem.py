@@ -201,7 +201,7 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    lambda_dis = 100
+    lambda_dis = 0.1
     learning_rate = 0.0001
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
