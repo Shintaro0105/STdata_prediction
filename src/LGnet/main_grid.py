@@ -1,3 +1,4 @@
+import itertools
 import time
 
 import matplotlib.pyplot as plt
@@ -508,6 +509,47 @@ def Test_Model(model, test_dataloader, max_speed):
     return [losses_l1, losses_mse, mean_l1, std_l1]
 
 
+def grid_search_lgnet(
+    memory_sizes, lambda_dis_values, train_dataloader, valid_dataloader, test_dataloader, X_mean, max_speed, output_path
+):
+    results = []
+
+    for memory_size, lambda_dis in itertools.product(memory_sizes, lambda_dis_values):
+        lgnet = LGnet_(
+            input_dim,
+            hidden_dim,
+            output_dim,
+            X_mean,
+            memory_size=memory_size,
+            memory_dim=128,
+            num_layers=1,
+            output_last=True,
+        )
+        adv = Discriminator(input_dim)
+
+        best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=lambda_dis)
+        [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
+
+        results.append(
+            {
+                "memory_size": memory_size,
+                "lambda_dis": lambda_dis,
+                "losses_l1": losses_l1,
+                "losses_mse": losses_mse,
+                "mean_l1": mean_l1,
+                "std_l1": std_l1,
+            }
+        )
+
+        del lgnet
+        del adv
+        torch.cuda.empty_cache()
+
+    results_df = pd.DataFrame(results)
+    results_df.to_csv(output_path, index=False)
+    print(f"Results saved to {output_path}")
+
+
 if __name__ == "__main__":
     data = "loop"
     if data == "inrix":
@@ -525,9 +567,17 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet_(
-        input_dim, hidden_dim, output_dim, X_mean, memory_size=32, memory_dim=128, num_layers=1, output_last=True
+    memory_sizes = [8, 16, 32, 64, 128]
+    lambda_dis_values = [0, 0.1, 1.0, 10, 100]
+    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results.csv"
+
+    grid_search_lgnet(
+        memory_sizes,
+        lambda_dis_values,
+        train_dataloader,
+        valid_dataloader,
+        test_dataloader,
+        X_mean,
+        max_speed,
+        output_path,
     )
-    adv = Discriminator(input_dim)
-    best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=0.1)
-    [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
