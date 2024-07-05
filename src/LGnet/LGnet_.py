@@ -101,6 +101,12 @@ class LGnet_(nn.Module):
             self.X_mean = Variable(torch.Tensor(X_mean))
             self.zeros = Variable(torch.zeros(input_size))
 
+        self.reset_parameters()
+
+    def reset_parameters(self):
+        stdv = 1.0 / math.sqrt(self.memory.size(1))
+        self.memory.data.uniform_(-stdv, stdv)
+
     def step(self, x, x_last_obsv, x_last_obsv_b, x_mean, h, c, mask, delta, delta_b):
         delta_z = torch.exp(-torch.max(self.zeros, self.gamma_z_l(delta)))
         delta_z_prime = torch.exp(-torch.max(self.zeros, self.gamma_z_prime_l(delta_b)))

@@ -244,6 +244,8 @@ def Train_Model(
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
 
         for data in train_dataloader:
+            model.train()
+            discriminator.train()
             inputs, labels = data
 
             if inputs.shape[0] != batch_size:
