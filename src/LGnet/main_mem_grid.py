@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as utils
 from Discriminator import *
-from LGnet_ import *
+from LGnet_mem import *
 
 
 def wasserstein_loss(y_pred, y_true):
@@ -182,14 +182,7 @@ def PrepareDataset(
 
 
 def Train_Model(
-    model,
-    discriminator,
-    train_dataloader,
-    valid_dataloader,
-    num_epochs=300,
-    patience=10,
-    min_delta=0.00001,
-    lambda_dis=0.1,
+    model, discriminator, train_dataloader, valid_dataloader, num_epochs=300, patience=10, min_delta=0.00001, lambda_dis=0.1
 ):
     print("Model Structure: ", model)
     print("Start Training ... ")
@@ -292,13 +285,10 @@ def Train_Model(
             optimizer.zero_grad()
 
             # Forecasting
-            outputs, generations = model(inputs)
+            outputs, generation = model(inputs)
 
-            forecasts_prediction = discriminator(generations.detach())
-            g_loss_forecast = adversarial_loss(forecasts_prediction, torch.ones_like(forecasts_prediction))
-
-            # print(f"generations: {generations.shape}")
-            # print(f"forecasts_prediction: {forecasts_prediction.shape}")
+            forecasts_prediction = discriminator(generation.detach())
+            g_loss_forecast = adversarial_loss(forecasts_prediction, torch.ones_like(real_predictions))
 
             if output_last:
                 loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) - lambda_dis * g_loss_forecast
@@ -339,7 +329,7 @@ def Train_Model(
                 inputs_val, labels_val = inputs_val, labels_val
 
             with torch.no_grad():
-                outputs_val, generations = model(inputs_val)
+                outputs_val, generation = model(inputs_val)
 
                 if output_last:
                     loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val))
@@ -415,13 +405,13 @@ def Train_Model(
             mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
             print(f"Epoch {epoch}: GPU memory allocated at end of epoch: {mem_allocated:.2f} MB")
 
-    # plot_losses_combined(
-    #     losses_epochs_train,
-    #     losses_epochs_valid,
-    #     losses_epochs_d_loss_real,
-    #     losses_epochs_d_loss_fake,
-    #     "combined_losses.png",
-    # )
+    plot_losses_combined(
+        losses_epochs_train,
+        losses_epochs_valid,
+        losses_epochs_d_loss_real,
+        losses_epochs_d_loss_fake,
+        "combined_losses_mem.png",
+    )
 
     return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
 
@@ -506,6 +496,7 @@ def Test_Model(model, test_dataloader, max_speed):
     MAPE_ = np.mean(MAPEs) * 100
 
     print("Tested: L1_mean: {}, L1_std: {}, MAE: {} MAPE: {}".format(mean_l1, std_l1, MAE_, MAPE_))
+
     return [mean_l1, std_l1, MAE_, MAPE_]
 
 
@@ -515,7 +506,7 @@ def grid_search_lgnet(
     results = []
 
     for memory_size, lambda_dis in itertools.product(memory_sizes, lambda_dis_values):
-        lgnet = LGnet_(
+        lgnet = LGnet_mem(
             input_dim,
             hidden_dim,
             output_dim,
@@ -532,7 +523,6 @@ def grid_search_lgnet(
 
         results.append(
             {
-                "memory_size": memory_size,
                 "lambda_dis": lambda_dis,
                 "L1_mean": mean_l1,
                 "L1_std": std_l1,
@@ -567,9 +557,9 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    memory_sizes = [8, 16, 32, 64, 128]
+    memory_sizes = [128]
     lambda_dis_values = [0, 0.1, 1.0, 10, 100]
-    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_ln0001.csv"
+    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_mem_ln0005.csv"
 
     grid_search_lgnet(
         memory_sizes,
