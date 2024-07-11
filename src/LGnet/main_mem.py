@@ -57,7 +57,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.split(speed_matrix, 16)
+    speed_matrix_s = np.split(speed_matrix, 8)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -201,8 +201,8 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    lambda_dis = 0.1
-    learning_rate = 0.0001
+    lambda_dis = 10.0
+    learning_rate = 0.0005
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
     adversarial_loss = wasserstein_loss
@@ -517,7 +517,7 @@ if __name__ == "__main__":
     output_dim = fea_size
 
     lgnet = LGnet_mem(
-        input_dim, hidden_dim, output_dim, X_mean, memory_size=32, memory_dim=128, num_layers=1, output_last=True
+        input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
     )
     adv = Discriminator(input_dim)
     best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader)
