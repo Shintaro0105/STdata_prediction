@@ -9,6 +9,8 @@ dependencies = [
     "pandas>=2.2.2",
     "matplotlib>=3.8.4",
     "scikit-learn>=1.4.2",
+    "tables>=3.9.2",
+    "h5py>=3.11.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"
