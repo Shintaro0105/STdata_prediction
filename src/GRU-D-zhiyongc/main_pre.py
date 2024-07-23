@@ -24,7 +24,6 @@ def PrepareDataset(
     train_propotion=0.7,
     valid_propotion=0.2,
     masking=False,
-    mask_ones_proportion=0.8,
 ):
     """Prepare training and testing datasets and dataloaders.
 
@@ -41,7 +40,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 8)
+    speed_matrix_s = speed_matrix_s = np.array_split(speed_matrix, 4)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -60,10 +59,8 @@ def PrepareDataset(
     # using zero-one mask to randomly set elements to zeros
     if masking:
         print("Split Speed finished. Start to generate Mask, Delta, Last_observed_X ...")
-        np.random.seed(1024)
-        Mask = np.random.choice(
-            [0, 1], size=(speed_sequences.shape), p=[1 - mask_ones_proportion, mask_ones_proportion]
-        )
+        Mask = np.where(speed_sequences == 0, 0, 1)
+        Mask_l = np.where(speed_labels == 0, 0, 1)
         speed_sequences = np.multiply(speed_sequences, Mask)
 
         # temporal information
@@ -93,8 +90,8 @@ def PrepareDataset(
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
     sample_size = speed_sequences.shape[0]
     index = np.arange(sample_size, dtype=int)
-    np.random.seed(1024)
-    np.random.shuffle(index)
+    # np.random.seed(1024)
+    # np.random.shuffle(index)
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]
@@ -108,6 +105,10 @@ def PrepareDataset(
         Mask = np.expand_dims(Mask, axis=1)
         Delta = np.expand_dims(Delta, axis=1)
         dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta), axis=1)
+
+        speed_labels = np.expand_dims(speed_labels, axis=1)
+        speed_labels_mask = np.expand_dims(Mask_l, axis=1)
+        speed_labels = np.concatenate((speed_labels, speed_labels_mask), axis=1)
 
     train_index = int(np.floor(sample_size * train_propotion))
     valid_index = int(np.floor(sample_size * (train_propotion + valid_propotion)))
@@ -209,6 +210,8 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             outputs = model(inputs)
 
+            outputs = torch.mul(outputs, torch.squeeze(labels[:, 1, :, :]))
+
             # print(f"forecasts type: {outputs.shape}")
             # print(f"labels type: {labels.shape}")
 
@@ -219,7 +222,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             #     )
 
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
+                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels)
@@ -274,8 +277,10 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             with torch.no_grad():
                 outputs_val = model(inputs_val)
 
+                outputs_val = torch.mul(outputs_val, torch.squeeze(labels_val[:, 1, :, :]))
+
                 if output_last:
-                    loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val))
+                    loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val[:, 0, :, :]))
                 else:
                     full_labels_val = torch.cat((inputs_val[:, 1:, :], labels_val), dim=1)
                     loss_valid = loss_MSE(outputs_val, full_labels_val)
@@ -381,10 +386,25 @@ def Test_Model(model, test_dataloader, max_speed):
         loss_L1 = torch.nn.L1Loss()
 
         if output_last:
-            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
-            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels))
-            MAE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels)))
-            MAPE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels)) / torch.squeeze(labels))
+            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
+            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
+            MAE = torch.mean(
+                torch.mul(
+                    torch.squeeze(labels[:, 1, :, :]),
+                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :])),
+                )
+            )
+            MAPE = torch.mean(
+                torch.mul(
+                    torch.squeeze(labels[:, 1, :, :]),
+                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :]))
+                    / torch.where(
+                        torch.squeeze(labels[:, 1, :, :]) == 0,
+                        torch.ones_like(torch.squeeze(labels[:, 0, :, :])),
+                        torch.squeeze(labels[:, 0, :, :]),
+                    ),
+                )
+            )
         else:
             loss_mse = loss_MSE(outputs[:, -1, :], labels)
             loss_l1 = loss_L1(outputs[:, -1, :], labels)
@@ -424,7 +444,7 @@ def Test_Model(model, test_dataloader, max_speed):
 
 
 if __name__ == "__main__":
-    data = "BAY"
+    data = "LA"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":

@@ -1,10 +1,3 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Sat May 12 16:49:49 2018
-
-@author: Zhiyong
-"""
-
 import time
 
 import h5py
@@ -13,7 +6,11 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
-from GRUD import *
+from LGnet_advmem import *
+
+
+def wasserstein_loss(y_pred, y_true):
+    return torch.mean(y_pred * y_true)
 
 
 def PrepareDataset(
@@ -24,7 +21,6 @@ def PrepareDataset(
     train_propotion=0.7,
     valid_propotion=0.2,
     masking=False,
-    mask_ones_proportion=0.8,
 ):
     """Prepare training and testing datasets and dataloaders.
 
@@ -41,7 +37,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 8)
+    speed_matrix_s = np.array_split(speed_matrix, 4)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -60,10 +56,8 @@ def PrepareDataset(
     # using zero-one mask to randomly set elements to zeros
     if masking:
         print("Split Speed finished. Start to generate Mask, Delta, Last_observed_X ...")
-        np.random.seed(1024)
-        Mask = np.random.choice(
-            [0, 1], size=(speed_sequences.shape), p=[1 - mask_ones_proportion, mask_ones_proportion]
-        )
+        Mask = np.where(speed_sequences == 0, 0, 1)
+        Mask_l = np.where(speed_labels == 0, 0, 1)
         speed_sequences = np.multiply(speed_sequences, Mask)
 
         # temporal information
@@ -76,9 +70,15 @@ def PrepareDataset(
         for i in range(1, S.shape[1]):
             Delta[:, i, :] = S[:, i, :] - S[:, i - 1, :]
 
+        # Calculate Delta_b (backward direction)
+        Delta_b = np.zeros_like(speed_sequences)
+        for i in range(0, S.shape[1] - 1):
+            Delta_b[:, i, :] = S[:, i + 1, :] - S[:, i, :]
+
         missing_index = np.where(Mask == 0)
 
         X_last_obsv = np.copy(speed_sequences)
+        X_last_obsv_b = np.copy(speed_sequences)
         for idx in range(missing_index[0].shape[0]):
             i = missing_index[0][idx]
             j = missing_index[1][idx]
@@ -87,14 +87,26 @@ def PrepareDataset(
                 Delta[i, j + 1, k] = Delta[i, j + 1, k] + Delta[i, j, k]
             if j != 0:
                 X_last_obsv[i, j, k] = X_last_obsv[i, j - 1, k]  # last observation
+
         Delta = Delta / Delta.max()  # normalize
+
+        for idx in range(missing_index[0].shape[0], -1):
+            i = missing_index[0][idx]
+            j = missing_index[1][idx]
+            k = missing_index[2][idx]
+            if j != 0 and j != 9:
+                Delta_b[i, j - 1, k] += Delta_b[i, j, k] + Delta_b[i, j - 1, k]
+            if j != 9:
+                X_last_obsv_b[i, j, k] = X_last_obsv_b[i, j + 1, k]
+
+        Delta_b = Delta_b / Delta_b.max()  # normalize
 
     # shuffle and split the dataset to training and testing datasets
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
     sample_size = speed_sequences.shape[0]
     index = np.arange(sample_size, dtype=int)
-    np.random.seed(1024)
-    np.random.shuffle(index)
+    # np.random.seed(1024)
+    # np.random.shuffle(index)
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]
@@ -103,11 +115,22 @@ def PrepareDataset(
         X_last_obsv = X_last_obsv[index]
         Mask = Mask[index]
         Delta = Delta[index]
+        X_last_obsv_b = X_last_obsv_b[index]
+        Delta_b = Delta_b[index]
+
         speed_sequences = np.expand_dims(speed_sequences, axis=1)
         X_last_obsv = np.expand_dims(X_last_obsv, axis=1)
         Mask = np.expand_dims(Mask, axis=1)
         Delta = np.expand_dims(Delta, axis=1)
-        dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta), axis=1)
+        X_last_obsv_b = np.expand_dims(X_last_obsv_b, axis=1)
+        Delta_b = np.expand_dims(Delta_b, axis=1)
+
+        dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta, X_last_obsv_b, Delta_b), axis=1)
+
+        speed_labels = np.expand_dims(speed_labels, axis=1)
+        speed_labels_mask = np.expand_dims(Mask_l, axis=1)
+
+        speed_labels = np.concatenate((speed_labels, speed_labels_mask), axis=1)
 
     train_index = int(np.floor(sample_size * train_propotion))
     valid_index = int(np.floor(sample_size * (train_propotion + valid_propotion)))
@@ -144,7 +167,9 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     print("Model Structure: ", model)
     print("Start Training ... ")
 
-    model.cuda()
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    model.to(device)
 
     if type(model) == nn.modules.container.Sequential:
         output_last = model[-1].output_last
@@ -173,6 +198,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     is_best_model = 0
     patient_epoch = 0
     for epoch in range(num_epochs):
+        model.train()
         # if use_gpu:
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at start of epoch: {mem_allocated:.2f} MB")
@@ -201,62 +227,31 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             optimizer.zero_grad()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.zero_grad(): {mem_allocated:.2f} MB"
-            #     )
-
+            # Forecasting
             outputs = model(inputs)
 
-            # print(f"forecasts type: {outputs.shape}")
-            # print(f"labels type: {labels.shape}")
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after model(inputs): {mem_allocated:.2f} MB"
-            #     )
+            outputs = torch.mul(outputs, torch.squeeze(labels[:, 1, :, :]))
 
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
+                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels)
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss calculation: {mem_allocated:.2f} MB"
-            #     )
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
 
             loss_train.backward()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after loss_train.backward(): {mem_allocated:.2f} MB"
-            #     )
-
+            # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
 
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after optimizer.step(): {mem_allocated:.2f} MB"
-            #     )
-
-            del inputs, labels, outputs, loss_train
-            torch.cuda.empty_cache()
-
-            # if use_gpu:
-            #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
-            #     print(
-            #         f"Epoch {epoch}, Step {trained_number}: GPU memory allocated after training step: {mem_allocated:.2f} MB"
-            #     )
+            # print(
+            #     f"Epoch [{epoch}]  D Loss Real: {d_loss_real.item():.4f}  D Loss Fake: {d_loss_fake.item():.4f}  D Loss: {d_loss.item():.4f}"
+            # )
+            # print(
+            #     f"Forecasting Loss: {loss.item():.4f}  G Loss Forecast: {g_loss_forecast.item():.4f}  G Loss: {g_loss.item():.4f}"
+            # )
 
             # validation
             model.eval()
@@ -274,8 +269,10 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             with torch.no_grad():
                 outputs_val = model(inputs_val)
 
+                outputs_val = torch.mul(outputs_val, torch.squeeze(labels_val[:, 1, :, :]))
+
                 if output_last:
-                    loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val))
+                    loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val[:, 0, :, :]))
                 else:
                     full_labels_val = torch.cat((inputs_val[:, 1:, :], labels_val), dim=1)
                     loss_valid = loss_MSE(outputs_val, full_labels_val)
@@ -381,10 +378,25 @@ def Test_Model(model, test_dataloader, max_speed):
         loss_L1 = torch.nn.L1Loss()
 
         if output_last:
-            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
-            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels))
-            MAE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels)))
-            MAPE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels)) / torch.squeeze(labels))
+            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
+            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
+            MAE = torch.mean(
+                torch.mul(
+                    torch.squeeze(labels[:, 1, :, :]),
+                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :])),
+                )
+            )
+            MAPE = torch.mean(
+                torch.mul(
+                    torch.squeeze(labels[:, 1, :, :]),
+                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :]))
+                    / torch.where(
+                        torch.squeeze(labels[:, 1, :, :]) == 0,
+                        torch.ones_like(torch.squeeze(labels[:, 0, :, :])),
+                        torch.squeeze(labels[:, 0, :, :]),
+                    ),
+                )
+            )
         else:
             loss_mse = loss_MSE(outputs[:, -1, :], labels)
             loss_l1 = loss_L1(outputs[:, -1, :], labels)
@@ -424,7 +436,7 @@ def Test_Model(model, test_dataloader, max_speed):
 
 
 if __name__ == "__main__":
-    data = "BAY"
+    data = "LA"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
@@ -457,7 +469,7 @@ if __name__ == "__main__":
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=64, masking=True
+        speed_matrix, BATCH_SIZE=32, masking=True
     )
 
     inputs, labels = next(iter(train_dataloader))
@@ -466,6 +478,6 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    grud = GRUD(input_dim, hidden_dim, output_dim, X_mean, output_last=True)
-    best_grud, losses_grud = Train_Model(grud, train_dataloader, valid_dataloader)
-    [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_grud, test_dataloader, max_speed)
+    lgnet = LGnet_advmem(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)
+    best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
+    [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
