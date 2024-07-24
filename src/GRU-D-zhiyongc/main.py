@@ -41,7 +41,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 8)
+    speed_matrix_s = np.array_split(speed_matrix, 4)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -93,8 +93,8 @@ def PrepareDataset(
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
     sample_size = speed_sequences.shape[0]
     index = np.arange(sample_size, dtype=int)
-    np.random.seed(1024)
-    np.random.shuffle(index)
+    # np.random.seed(1024)
+    # np.random.shuffle(index)
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]

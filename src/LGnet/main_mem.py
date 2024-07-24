@@ -1,5 +1,6 @@
 import time
 
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -57,7 +58,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.split(speed_matrix, 8)
+    speed_matrix_s = np.array_split(speed_matrix, 4)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -127,8 +128,8 @@ def PrepareDataset(
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
     sample_size = speed_sequences.shape[0]
     index = np.arange(sample_size, dtype=int)
-    np.random.seed(1024)
-    np.random.shuffle(index)
+    # np.random.seed(1024)
+    # np.random.shuffle(index)
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]
@@ -505,6 +506,32 @@ if __name__ == "__main__":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
+    elif data == "LA":
+        with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/metr-la.h5", "r") as f:
+            # dfグループ内のデータセットを取得
+            df_group = f["df"]
+
+            # 各データセットを取得
+            axis0 = df_group["axis0"][:]
+            axis1 = df_group["axis1"][:]
+            block0_items = df_group["block0_items"][:]
+            block0_values = df_group["block0_values"][:]
+
+            # DataFrameの作成
+            speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
+    elif data == "BAY":
+        with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/pems-bay.h5", "r") as f:
+            # dfグループ内のデータセットを取得
+            df_group = f["speed"]
+
+            # 各データセットを取得
+            axis0 = df_group["axis0"][:]
+            axis1 = df_group["axis1"][:]
+            block0_items = df_group["block0_items"][:]
+            block0_values = df_group["block0_values"][:]
+
+            # DataFrameの作成
+            speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
         speed_matrix, BATCH_SIZE=32, masking=True

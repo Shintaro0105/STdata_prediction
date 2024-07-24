@@ -128,8 +128,8 @@ def PrepareDataset(
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
     sample_size = speed_sequences.shape[0]
     index = np.arange(sample_size, dtype=int)
-    np.random.seed(1024)
-    np.random.shuffle(index)
+    # np.random.seed(1024)
+    # np.random.shuffle(index)
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]
