@@ -114,6 +114,13 @@ class LGnet_(nn.Module):
         z = mask * x + (1 - mask) * (delta_z * x_last_obsv + (1 - delta_z) * x_mean)
         z_prime = mask * x + (1 - mask) * (delta_z_prime * x_last_obsv_b + (1 - delta_z_prime) * x_mean)
 
+        # print("delta_z_prime")
+        # print(delta_z_prime.shape)
+        # print(delta_z_prime)
+        # print("x_last_obsv_b")
+        # print(x_last_obsv_b.shape)
+        # print(x_last_obsv_b)
+
         x_i = self.fc(h)
 
         # print("z")

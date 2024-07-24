@@ -1,16 +1,36 @@
 import time
 
 import h5py
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
-from LGnet_advmem import *
+from Discriminator import *
+from LGnet_mem import *
 
 
 def wasserstein_loss(y_pred, y_true):
     return torch.mean(y_pred * y_true)
+
+
+def plot_losses_combined(losses_train, losses_valid, losses_d_real, losses_d_fake, filename):
+    plt.figure(figsize=(10, 6))
+
+    plt.plot(losses_train, label="Training Loss")
+    plt.plot(losses_valid, label="Validation Loss")
+    plt.plot(losses_d_real, label="Discriminator Real Loss")
+    plt.plot(losses_d_fake, label="Discriminator Fake Loss")
+
+    plt.title("Losses Over Epochs")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.legend()
+    plt.grid(True)
+
+    plt.savefig(filename)
+    plt.show()
 
 
 def PrepareDataset(
@@ -163,13 +183,16 @@ def PrepareDataset(
     return train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean
 
 
-def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patience=10, min_delta=0.00001):
+def Train_Model(
+    model, discriminator, train_dataloader, valid_dataloader, num_epochs=300, patience=10, min_delta=0.00001
+):
     print("Model Structure: ", model)
     print("Start Training ... ")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     model.to(device)
+    discriminator.to(device)
 
     if type(model) == nn.modules.container.Sequential:
         output_last = model[-1].output_last
@@ -181,8 +204,11 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
+    lambda_dis = 10.0
     learning_rate = 0.0001
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
+    optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
+    adversarial_loss = wasserstein_loss
     use_gpu = torch.cuda.is_available()
 
     interval = 100
@@ -190,6 +216,8 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     losses_valid = []
     losses_epochs_train = []
     losses_epochs_valid = []
+    losses_epochs_d_loss_real = []
+    losses_epochs_d_loss_fake = []
 
     cur_time = time.time()
     pre_time = time.time()
@@ -199,6 +227,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     patient_epoch = 0
     for epoch in range(num_epochs):
         model.train()
+        discriminator.train()
         # if use_gpu:
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at start of epoch: {mem_allocated:.2f} MB")
@@ -210,11 +239,16 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
         losses_epoch_train = []
         losses_epoch_valid = []
 
+        losses_epoch_d_loss_real = []
+        losses_epoch_d_loss_fake = []
+
         # if use_gpu:
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
 
         for data in train_dataloader:
+            model.train()
+            discriminator.train()
             inputs, labels = data
 
             if inputs.shape[0] != batch_size:
@@ -225,26 +259,59 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             else:
                 inputs, labels = inputs, labels
 
+            # print("inputs")
+            # print(inputs.shape)
+
+            optimizer_adv.zero_grad()
+
+            forecasts, generation = model(inputs)
+            real_predictions = discriminator(torch.squeeze(labels[:, 0, :, :]))
+            fake_predictions = discriminator(generation.detach())
+
+            d_loss_real = adversarial_loss(real_predictions, torch.ones_like(real_predictions))
+            d_loss_fake = adversarial_loss(fake_predictions, torch.ones_like(fake_predictions))
+
+            d_loss = -d_loss_real + d_loss_fake
+            # print(f"d_loss_real: {d_loss_real}")
+            # print(f"d_loss_fake: {d_loss_fake}")
+
+            losses_epoch_d_loss_real.append(d_loss_real.data)
+            losses_epoch_d_loss_fake.append(d_loss_fake.data)
+
+            d_loss.backward()
+
+            optimizer_adv.step()
+
+            # print("forecasts")
+            # print(forecasts.shape)
+
             optimizer.zero_grad()
 
             # Forecasting
-            outputs = model(inputs)
+            outputs, generation = model(inputs)
+
+            forecasts_prediction = discriminator(generation.detach())
+            g_loss_forecast = adversarial_loss(forecasts_prediction, torch.ones_like(real_predictions))
 
             outputs = torch.mul(outputs, torch.squeeze(labels[:, 1, :, :]))
 
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
+                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :])) - lambda_dis * g_loss_forecast
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
-                loss_train = loss_MSE(outputs, full_labels)
+                loss_train = loss_MSE(outputs, full_labels) - lambda_dis * g_loss_forecast
 
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
+
+            # print(f"loss_train: {loss_train}")
 
             loss_train.backward()
 
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+
+            # print(model.memory)
 
             # print(
             #     f"Epoch [{epoch}]  D Loss Real: {d_loss_real.item():.4f}  D Loss Fake: {d_loss_fake.item():.4f}  D Loss: {d_loss.item():.4f}"
@@ -267,8 +334,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
                 inputs_val, labels_val = inputs_val, labels_val
 
             with torch.no_grad():
-                outputs_val = model(inputs_val)
-
+                outputs_val, generation = model(inputs_val)
                 outputs_val = torch.mul(outputs_val, torch.squeeze(labels_val[:, 1, :, :]))
 
                 if output_last:
@@ -297,6 +363,15 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
         losses_epochs_train.append(avg_losses_epoch_train)
         losses_epochs_valid.append(avg_losses_epoch_valid)
 
+        avg_losses_epoch_d_loss_real = sum(losses_epoch_d_loss_real).cpu().numpy() / float(
+            len(losses_epoch_d_loss_real)
+        )
+        avg_losses_epoch_d_loss_fake = sum(losses_epoch_d_loss_fake).cpu().numpy() / float(
+            len(losses_epoch_d_loss_fake)
+        )
+        losses_epochs_d_loss_real.append(avg_losses_epoch_d_loss_real)
+        losses_epochs_d_loss_fake.append(avg_losses_epoch_d_loss_fake)
+
         # Early Stopping
         if epoch == 0:
             is_best_model = 1
@@ -320,9 +395,11 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
         # Print training parameters
         cur_time = time.time()
         print(
-            "Epoch: {}, train_loss: {}, valid_loss: {}, time: {}, best model: {}".format(
+            "Epoch: {}, train_loss: {}, d_loss_real: {}, d_loss_fake: {}, valid_loss: {}, time: {}, best model: {}".format(
                 epoch,
                 np.around(avg_losses_epoch_train, decimals=8),
+                np.around(avg_losses_epoch_d_loss_real, decimals=8),
+                np.around(avg_losses_epoch_d_loss_fake, decimals=8),
                 np.around(avg_losses_epoch_valid, decimals=8),
                 np.around([cur_time - pre_time], decimals=2),
                 is_best_model,
@@ -333,6 +410,14 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
         if use_gpu:
             mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
             print(f"Epoch {epoch}: GPU memory allocated at end of epoch: {mem_allocated:.2f} MB")
+
+    plot_losses_combined(
+        losses_epochs_train,
+        losses_epochs_valid,
+        losses_epochs_d_loss_real,
+        losses_epochs_d_loss_fake,
+        "combined_losses_mem.png",
+    )
 
     return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
 
@@ -372,7 +457,7 @@ def Test_Model(model, test_dataloader, max_speed):
         else:
             inputs, labels = inputs, labels
 
-        outputs = model(inputs)
+        outputs, generation = model(inputs)
 
         loss_MSE = torch.nn.MSELoss()
         loss_L1 = torch.nn.L1Loss()
@@ -478,6 +563,9 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet_advmem(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)
-    best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
+    lgnet = LGnet_mem(
+        input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
+    )
+    adv = Discriminator(input_dim)
+    best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader)
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

@@ -6,7 +6,7 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
-from LGnet_advmem import *
+from LGnet_adv import *
 
 
 def wasserstein_loss(y_pred, y_true):
@@ -182,7 +182,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
     loss_L1 = torch.nn.L1Loss()
 
     learning_rate = 0.0001
-    optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, alpha=0.99)
+    optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     use_gpu = torch.cuda.is_available()
 
     interval = 100
@@ -215,6 +215,7 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
 
         for data in train_dataloader:
+            model.train()
             inputs, labels = data
 
             if inputs.shape[0] != batch_size:
@@ -225,11 +226,13 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             else:
                 inputs, labels = inputs, labels
 
+            # print("inputs")
+            # print(inputs.shape)
+
             optimizer.zero_grad()
 
             # Forecasting
             outputs = model(inputs)
-
             outputs = torch.mul(outputs, torch.squeeze(labels[:, 1, :, :]))
 
             if output_last:
@@ -241,10 +244,14 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
             losses_train.append(loss_train.data)
             losses_epoch_train.append(loss_train.data)
 
+            # print(f"loss_train: {loss_train}")
+
             loss_train.backward()
 
             # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
             optimizer.step()
+
+            # print(model.memory)
 
             # print(
             #     f"Epoch [{epoch}]  D Loss Real: {d_loss_real.item():.4f}  D Loss Fake: {d_loss_fake.item():.4f}  D Loss: {d_loss.item():.4f}"
@@ -268,7 +275,6 @@ def Train_Model(model, train_dataloader, valid_dataloader, num_epochs=300, patie
 
             with torch.no_grad():
                 outputs_val = model(inputs_val)
-
                 outputs_val = torch.mul(outputs_val, torch.squeeze(labels_val[:, 1, :, :]))
 
                 if output_last:
@@ -478,6 +484,8 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet_advmem(input_dim, hidden_dim, output_dim, X_mean, memory_size=32, num_layers=1, output_last=True)
+    lgnet = LGnet_adv(
+        input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
+    )
     best_lgnet, losses_lgnet = Train_Model(lgnet, train_dataloader, valid_dataloader)
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

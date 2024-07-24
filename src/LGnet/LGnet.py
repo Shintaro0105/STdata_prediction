@@ -93,6 +93,16 @@ class LGnet(nn.Module):
 
         self.s_i = torch.Tensor(memory_size)
 
+        self.local_statistics = torch.Tensor(memory_dim)
+
+        self.global_dynamics = torch.Tensor(memory_dim)
+
+        self.z = torch.Tensor(input_size)
+
+        self.z_prime = torch.Tensor(input_size)
+
+        self.x_i = torch.Tensor(output_size)
+
         self.output_last = output_last
 
         use_gpu = torch.cuda.is_available()
@@ -125,7 +135,12 @@ class LGnet(nn.Module):
         # print("x_i")
         # print(x_i.shape)
 
+        self.z = z
+        self.z_prime = z_prime
+        self.x_i = x_i
+
         local_statistics = self.q_for_memory(torch.cat((z, z_prime, x_i), 1))
+        self.local_statistics = local_statistics
 
         # Calculate similarity scores
         s_i = F.softmax(torch.matmul(self.memory, local_statistics.unsqueeze(-1)).squeeze(-1), dim=-1)
@@ -139,6 +154,8 @@ class LGnet(nn.Module):
 
         # Retrieve global temporal dynamics
         global_dynamics = torch.matmul(s_i, self.memory)
+
+        self.global_dynamics = global_dynamics
 
         # print("local")
         # print(local_statistics.shape)
@@ -244,7 +261,7 @@ class LGnet(nn.Module):
             c = f * c + i * c_tilde
             h = o * F.tanh(c)
 
-            return outputs[:, -1, :], self.fc(h).unsqueeze(1)
+            return outputs, self.fc(h).unsqueeze(1)
         else:
             return outputs
 

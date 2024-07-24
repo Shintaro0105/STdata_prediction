@@ -305,6 +305,9 @@ def Train_Model(
 
             outputs = torch.mul(outputs, torch.squeeze(labels[:, 1, :, :]))
 
+            # print(outputs.shape)
+            # print(torch.squeeze(labels[:, 1, :, :]).shape)
+
             if output_last:
                 loss_train = (
                     loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :])) - lambda_dis * g_loss_forecast
@@ -348,7 +351,7 @@ def Train_Model(
             with torch.no_grad():
                 outputs_val, generations = model(inputs_val)
 
-                # outputs_val = torch.mul(outputs_val, torch.squeeze(labels_val[:, 1, :, :]))
+                outputs_val = torch.mul(outputs_val, torch.squeeze(labels_val[:, 1, :, :]))
 
                 if output_last:
                     loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val[:, 0, :, :]))
