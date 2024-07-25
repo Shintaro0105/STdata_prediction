@@ -129,6 +129,7 @@ class LGnet(nn.Module):
         x_i = self.fc(h)
 
         # print("z")
+        # print(z)
         # print(z.shape)
         # print("z_prime")
         # print(z_prime.shape)

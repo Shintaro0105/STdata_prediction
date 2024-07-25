@@ -449,6 +449,12 @@ if __name__ == "__main__":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
+        np.random.seed(1024)
+        mask_ones_proportion=0.8
+        Mask = np.random.choice(
+            [0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion]
+        )
+        speed_matrix = np.multiply(speed_matrix, Mask)
     elif data == "LA":
         with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/metr-la.h5", "r") as f:
             # dfグループ内のデータセットを取得
