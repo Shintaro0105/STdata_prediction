@@ -168,5 +168,8 @@ cython_debug/
 #Mac
 .DS_Store
 
-#GRUD Data
+#Dataset
 input
+
+#Output
+output
