@@ -8,7 +8,7 @@ import torch
 import torch.nn as nn
 import torch.utils.data as utils
 from Discriminator import *
-from LGnet_premiss import *
+from LGnet_ import *
 
 
 def wasserstein_loss(y_pred, y_true):
@@ -543,10 +543,8 @@ if __name__ == "__main__":
     elif data == "loop":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
         np.random.seed(1024)
-        mask_ones_proportion=0.8
-        Mask = np.random.choice(
-            [0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion]
-        )
+        mask_ones_proportion = 0.8
+        Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
         speed_matrix = np.multiply(speed_matrix, Mask)
     elif data == "LA":
         with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/metr-la.h5", "r") as f:
@@ -585,7 +583,7 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet_premiss(
+    lgnet = LGnet_(
         input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
     )
     adv = Discriminator(input_dim)
