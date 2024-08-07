@@ -436,16 +436,14 @@ def Test_Model(model, test_dataloader, max_speed):
 
 
 if __name__ == "__main__":
-    data = "LA"
+    data = "BAY"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
         np.random.seed(1024)
-        mask_ones_proportion=0.8
-        Mask = np.random.choice(
-            [0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion]
-        )
+        mask_ones_proportion = 0.8
+        Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
         speed_matrix = np.multiply(speed_matrix, Mask)
     elif data == "LA":
         with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/metr-la.h5", "r") as f:
@@ -473,6 +471,10 @@ if __name__ == "__main__":
 
             # DataFrameの作成
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
+        np.random.seed(1024)
+        mask_ones_proportion = 0.8
+        Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
+        speed_matrix = np.multiply(speed_matrix, Mask)
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
         speed_matrix, BATCH_SIZE=32, masking=True

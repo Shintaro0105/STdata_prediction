@@ -160,7 +160,8 @@ pyzmq==26.0.0
 ruff==0.3.7
 scikit-learn==1.4.2
     # via python-docker
-scipy==1.13.0
+scipy==1.14.0
+    # via python-docker
     # via scikit-learn
 six==1.16.0
     # via asttokens
