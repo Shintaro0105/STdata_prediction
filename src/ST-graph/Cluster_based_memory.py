@@ -64,21 +64,33 @@ class FilterLinear(nn.Module):
         )
 
 
-class LGnet(nn.Module):
+class Cluster_based_memory(nn.Module):
     def __init__(
-        self, input_size, hidden_size, output_size, X_mean, memory_size, memory_dim, num_layers, output_last=False
+        self,
+        input_size,
+        hidden_size,
+        output_size,
+        X_mean,
+        memory_size,
+        memory_dim,
+        num_layers,
+        num_clusters,
+        clusters,
+        output_last=False,
     ):
-        super(LGnet, self).__init__()
+        super(Cluster_based_memory, self).__init__()
         self.hidden_size = hidden_size
         self.num_layers = num_layers
         self.memory_size = memory_size
         self.memory_dim = memory_dim
+        self.num_clusters = num_clusters
+        self.clusters = clusters
 
         # Define the LSTM gate layers
-        self.il = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.fl = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.ol = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.cl = nn.Linear(memory_dim + hidden_size, hidden_size)
+        self.il = nn.Linear(output_size + hidden_size, hidden_size)
+        self.fl = nn.Linear(output_size + hidden_size, hidden_size)
+        self.ol = nn.Linear(output_size + hidden_size, hidden_size)
+        self.cl = nn.Linear(output_size + hidden_size, hidden_size)
 
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -86,10 +98,12 @@ class LGnet(nn.Module):
         self.gamma_z_l = FilterLinear(input_size, input_size, torch.eye(input_size))
         self.gamma_z_prime_l = FilterLinear(input_size, input_size, torch.eye(input_size))
 
-        self.q_for_memory = nn.Linear(2 * input_size + output_size, memory_dim)
+        self.q_for_memory = nn.Linear(2 * input_size + output_size, output_size)
 
         # Initialize memory component
-        self.memory = nn.Parameter(torch.Tensor(memory_size, memory_dim))
+        self.memory = nn.Parameter(torch.Tensor(num_clusters, memory_size, output_size))
+
+        self.global_weights = nn.Parameter(torch.Tensor(num_clusters))
 
         self.s_i = torch.Tensor(memory_size)
 
@@ -118,6 +132,8 @@ class LGnet(nn.Module):
     def reset_parameters(self):
         stdv = 1.0 / math.sqrt(self.memory.size(1))
         self.memory.data.uniform_(-stdv, stdv)
+        stdv = 1.0 / math.sqrt(self.global_weights.size(0))
+        self.global_weights.data.uniform_(-stdv, stdv)
 
     def step(self, x, x_last_obsv, x_last_obsv_b, x_mean, h, c, mask, delta, delta_b):
         delta_z = torch.exp(-torch.max(self.zeros, self.gamma_z_l(delta)))
@@ -143,19 +159,28 @@ class LGnet(nn.Module):
         local_statistics = self.q_for_memory(torch.cat((z, z_prime, x_i), 1))
         self.local_statistics = local_statistics
 
-        # Calculate similarity scores
-        s_i = F.softmax(torch.matmul(self.memory, local_statistics.unsqueeze(-1)).squeeze(-1), dim=-1)
+        global_dynamics = None
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-        self.s_i = s_i
+        for cluster_id in range(self.num_clusters):
+            cluster_memory = self.memory[cluster_id]
+            cluster_memory = cluster_memory.squeeze().to(device)
+            local_i = torch.zeros(local_statistics.shape).to(device)
+            # print("local_i")
+            # print(local_i.shape)
+            # print("cluster_memory")
+            # print(cluster_memory.shape)
+            cluster_indices = torch.where(self.clusters == cluster_id + 1)[0]
+            for id in cluster_indices:
+                local_i[:, id] = local_statistics[:, id]
+            s_i = F.softmax(torch.matmul(cluster_memory, local_i.unsqueeze(-1)).squeeze(-1), dim=-1)
+            self.s_i = s_i
+            if global_dynamics is None:
+                global_dynamics = torch.matmul(s_i, cluster_memory).unsqueeze(1)
+            else:
+                global_dynamics = torch.cat((global_dynamics, torch.matmul(s_i, cluster_memory).unsqueeze(1)), 1)
 
-        # print("memory")
-        # print(self.memory.shape)
-        # print("local")
-        # print(local_statistics.unsqueeze(-1).shape)
-
-        # Retrieve global temporal dynamics
-        global_dynamics = torch.matmul(s_i, self.memory)
-
+        global_dynamics = torch.tensordot(global_dynamics, self.global_weights, dims=([1], [0]))
         self.global_dynamics = global_dynamics
 
         # print("local")
@@ -237,8 +262,31 @@ class LGnet(nn.Module):
 
             local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
 
-            s_i = F.softmax(torch.matmul(self.memory, local_statistics.unsqueeze(-1)).squeeze(-1), dim=-1)
-            global_dynamics = torch.matmul(s_i, self.memory)
+            self.local_statistics = local_statistics
+
+            global_dynamics = None
+            device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+            for cluster_id in range(self.num_clusters):
+                cluster_memory = self.memory[cluster_id]
+                cluster_memory = cluster_memory.squeeze().to(device)
+                local_i = torch.zeros(local_statistics.shape).to(device)
+                # print("local_i")
+                # print(local_i.shape)
+                # print("cluster_memory")
+                # print(cluster_memory.shape)
+                cluster_indices = torch.where(self.clusters == cluster_id + 1)[0]
+                for id in cluster_indices:
+                    local_i[:, id] = local_statistics[:, id]
+                s_i = F.softmax(torch.matmul(cluster_memory, local_i.unsqueeze(-1)).squeeze(-1), dim=-1)
+                self.s_i = s_i
+                if global_dynamics is None:
+                    global_dynamics = torch.matmul(s_i, cluster_memory).unsqueeze(1)
+                else:
+                    global_dynamics = torch.cat((global_dynamics, torch.matmul(s_i, cluster_memory).unsqueeze(1)), 1)
+
+            global_dynamics = torch.tensordot(global_dynamics, self.global_weights, dims=([1], [0]))
+            self.global_dynamics = global_dynamics
 
             # print("local")
             # print(local_statistics.shape)

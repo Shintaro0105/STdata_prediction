@@ -7,8 +7,13 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
+from Cluster_based_memory import *
 from Discriminator import *
-from LGnet_ import *
+from scipy.cluster.hierarchy import fcluster, linkage
+
+
+def euclidean_distance(lat1, lon1, lat2, lon2):
+    return ((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) ** 0.5
 
 
 def wasserstein_loss(y_pred, y_true):
@@ -41,7 +46,6 @@ def PrepareDataset(
     train_propotion=0.7,
     valid_propotion=0.2,
     masking=False,
-    mask_ones_proportion=0.8,
 ):
     """Prepare training and testing datasets and dataloaders.
 
@@ -58,7 +62,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 16)
+    speed_matrix_s = np.array_split(speed_matrix, 8)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -77,10 +81,8 @@ def PrepareDataset(
     # using zero-one mask to randomly set elements to zeros
     if masking:
         print("Split Speed finished. Start to generate Mask, Delta, Last_observed_X ...")
-        np.random.seed(1024)
-        Mask = np.random.choice(
-            [0, 1], size=(speed_sequences.shape), p=[1 - mask_ones_proportion, mask_ones_proportion]
-        )
+        Mask = np.where(speed_sequences == 0, 0, 1)
+        Mask_l = np.where(speed_labels == 0, 0, 1)
         speed_sequences = np.multiply(speed_sequences, Mask)
 
         # temporal information
@@ -150,6 +152,12 @@ def PrepareDataset(
 
         dataset_agger = np.concatenate((speed_sequences, X_last_obsv, Mask, Delta, X_last_obsv_b, Delta_b), axis=1)
 
+        Mask_l = Mask_l[index]
+        speed_labels = np.expand_dims(speed_labels, axis=1)
+        speed_labels_mask = np.expand_dims(Mask_l, axis=1)
+
+        speed_labels = np.concatenate((speed_labels, speed_labels_mask), axis=1)
+
     train_index = int(np.floor(sample_size * train_propotion))
     valid_index = int(np.floor(sample_size * (train_propotion + valid_propotion)))
 
@@ -209,7 +217,7 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    learning_rate = 0.0005
+    learning_rate = 0.0001
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
     adversarial_loss = wasserstein_loss
@@ -250,6 +258,7 @@ def Train_Model(
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
 
+        # i = 0
         for data in train_dataloader:
             model.train()
             discriminator.train()
@@ -269,7 +278,7 @@ def Train_Model(
             optimizer_adv.zero_grad()
 
             forecasts, generation = model(inputs)
-            real_predictions = discriminator(labels)
+            real_predictions = discriminator(torch.squeeze(labels[:, 0, :, :]))
             fake_predictions = discriminator(generation.detach())
 
             d_loss_real = adversarial_loss(real_predictions, torch.ones_like(real_predictions))
@@ -300,8 +309,17 @@ def Train_Model(
             # print(f"generations: {generations.shape}")
             # print(f"forecasts_prediction: {forecasts_prediction.shape}")
 
+            # print("outputs")
+            # print(outputs.shape)
+            # print("torch.squeeze(labels[:, 1, :, :])")
+            # print(torch.squeeze(labels[:, 1, :, :]).shape)
+
+            outputs = torch.mul(outputs[:, -1, :], torch.squeeze(labels[:, 1, :, :]))
+
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels)) - lambda_dis * g_loss_forecast
+                loss_train = (
+                    loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :])) - lambda_dis * g_loss_forecast
+                )
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels) - lambda_dis * g_loss_forecast
@@ -325,6 +343,12 @@ def Train_Model(
             #     f"Forecasting Loss: {loss.item():.4f}  G Loss Forecast: {g_loss_forecast.item():.4f}  G Loss: {g_loss.item():.4f}"
             # )
 
+            # if i < 10 and epoch % 25 == 0:
+            #     plot_locals_graph(model.local_statistics, epoch)
+            #     plot_heatmap(model.s_i, epoch)
+            #     plot_globals_graph(model.global_dynamics, epoch)
+            #     i += 1
+
             # validation
             model.eval()
             try:
@@ -341,8 +365,10 @@ def Train_Model(
             with torch.no_grad():
                 outputs_val, generations = model(inputs_val)
 
+                outputs_val = torch.mul(outputs_val[:, -1, :], torch.squeeze(labels_val[:, 1, :, :]))
+
                 if output_last:
-                    loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val))
+                    loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val[:, 0, :, :]))
                 else:
                     full_labels_val = torch.cat((inputs_val[:, 1:, :], labels_val), dim=1)
                     loss_valid = loss_MSE(outputs_val, full_labels_val)
@@ -361,6 +387,16 @@ def Train_Model(
 
             # output
             trained_number += 1
+
+        # if epoch % 25 == 0:
+        #     plot_locals_graph(model.local_statistics, epoch)
+        #     plot_heatmap(model.s_i, epoch)
+        #     plot_globals_graph(model.global_dynamics, epoch)
+        #     plot_memorymap(model.memory, epoch)
+        #     plot_sum_memory(model.memory, epoch)
+        #     plot_local_input_graph(model.z, model.z_prime, model.x_i, 0, epoch)
+        #     plot_localglobal_graph(model.local_statistics, model.global_dynamics, 0, epoch)
+        #     plot_memory_mat_local(torch.matmul(model.memory, model.local_statistics.unsqueeze(-1)).squeeze(-1), epoch)
 
         avg_losses_epoch_train = sum(losses_epoch_train).cpu().numpy() / float(len(losses_epoch_train))
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().numpy() / float(len(losses_epoch_valid))
@@ -394,6 +430,14 @@ def Train_Model(
                 patient_epoch += 1
                 if patient_epoch >= patience:
                     print("Early Stopped at Epoch:", epoch)
+                    # plot_locals_graph(model.local_statistics, epoch)
+                    # plot_heatmap(model.s_i, epoch)
+                    # plot_globals_graph(model.global_dynamics, epoch)
+                    # plot_memorymap(model.memory, epoch)
+                    # plot_sum_memory(model.memory, epoch)
+                    # plot_local_input_graph(model.z, model.z_prime, model.x_i, 0, epoch)
+                    # plot_localglobal_graph(model.local_statistics, model.global_dynamics, 0, epoch)
+                    # plot_memory_mat_local(torch.matmul(model.memory, model.local_statistics.unsqueeze(-1)).squeeze(-1),epoch)
                     break
 
         # Print training parameters
@@ -467,10 +511,25 @@ def Test_Model(model, test_dataloader, max_speed):
         loss_L1 = torch.nn.L1Loss()
 
         if output_last:
-            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels))
-            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels))
-            MAE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels)))
-            MAPE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels)) / torch.squeeze(labels))
+            loss_mse = loss_MSE(torch.squeeze(outputs[:, -1, :]), torch.squeeze(labels[:, 0, :, :]))
+            loss_l1 = loss_L1(torch.squeeze(outputs[:, -1, :]), torch.squeeze(labels[:, 0, :, :]))
+            MAE = torch.mean(
+                torch.mul(
+                    torch.squeeze(labels[:, 1, :, :]),
+                    torch.abs(torch.squeeze(outputs[:, -1, :]) - torch.squeeze(labels[:, 0, :, :])),
+                )
+            )
+            MAPE = torch.mean(
+                torch.mul(
+                    torch.squeeze(labels[:, 1, :, :]),
+                    torch.abs(torch.squeeze(outputs[:, -1, :]) - torch.squeeze(labels[:, 0, :, :]))
+                    / torch.where(
+                        torch.squeeze(labels[:, 1, :, :]) == 0,
+                        torch.ones_like(torch.squeeze(labels[:, 0, :, :])),
+                        torch.squeeze(labels[:, 0, :, :]),
+                    ),
+                )
+            )
         else:
             loss_mse = loss_MSE(outputs[:, -1, :], labels)
             loss_l1 = loss_L1(outputs[:, -1, :], labels)
@@ -510,7 +569,7 @@ def Test_Model(model, test_dataloader, max_speed):
 
 
 if __name__ == "__main__":
-    data = "loop"
+    data = "LA"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
@@ -528,6 +587,21 @@ if __name__ == "__main__":
 
             # DataFrameの作成
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
+        file_path = "/workspaces/STdata_prediction/src/ST-graph/input/graph_sensor_locations.csv"
+        data = pd.read_csv(file_path)
+        indexes = data["index"]
+        sensor_ids = data["sensor_id"]
+        latitudes = data["latitude"]
+        longitudes = data["longitude"]
+
+        num_sensors = len(indexes)
+        distance_matrix = np.zeros((num_sensors, num_sensors))
+
+        for i in range(num_sensors):
+            for j in range(num_sensors):
+                if i != j:
+                    distance_matrix[i, j] = euclidean_distance(latitudes[i], longitudes[i], latitudes[j], longitudes[j])
+
     elif data == "BAY":
         with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/pems-bay.h5", "r") as f:
             # dfグループ内のデータセットを取得
@@ -552,9 +626,30 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet_(
-        input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
+    # クラスタリングの実行
+    # 'ward'法はクラスタ間の分散が最小となるようにクラスタを結合する方法です
+    Z = linkage(distance_matrix, method="ward")
+
+    # クラスタ数を決定 (例: 2クラスタ)
+    num_clusters = 5
+    clusters = fcluster(Z, num_clusters, criterion="maxclust")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    cluster_based_memory = Cluster_based_memory(
+        input_dim,
+        hidden_dim,
+        output_dim,
+        X_mean,
+        memory_size=8,
+        memory_dim=128,
+        num_layers=1,
+        num_clusters=num_clusters,
+        clusters=torch.tensor(clusters).to(device),
+        output_last=True,
     )
     adv = Discriminator(input_dim)
-    best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=10.0)
+    best_lgnet, losses_lgnet = Train_Model(
+        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=0.1
+    )
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
