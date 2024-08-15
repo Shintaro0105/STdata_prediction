@@ -268,7 +268,9 @@ class Cluster_based_memory(nn.Module):
             c = Cell_State
             forecasts = outputs[:, -1, :].squeeze()
 
-            local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
+            locals = torch.cat((forecasts.unsqueeze(1), forecasts.unsqueeze(1), forecasts.unsqueeze(1)), 1)
+
+            local_statistics = torch.sum(locals * self.local_weights, dim=1)
 
             self.local_statistics = local_statistics
 

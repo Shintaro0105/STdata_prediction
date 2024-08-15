@@ -631,7 +631,7 @@ if __name__ == "__main__":
     Z = linkage(distance_matrix, method="ward")
 
     # クラスタ数を決定 (例: 2クラスタ)
-    num_clusters = 30
+    num_clusters = 25
     clusters = fcluster(Z, num_clusters, criterion="maxclust")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
