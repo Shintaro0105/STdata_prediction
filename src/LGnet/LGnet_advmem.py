@@ -72,10 +72,10 @@ class LGnet_advmem(nn.Module):
 
         # Define the LSTM gate layers
         # Define the LSTM gate layers
-        self.il = nn.Linear(input_size + hidden_size, hidden_size)
-        self.fl = nn.Linear(input_size + hidden_size, hidden_size)
-        self.ol = nn.Linear(input_size + hidden_size, hidden_size)
-        self.cl = nn.Linear(input_size + hidden_size, hidden_size)
+        self.il = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
+        self.fl = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
+        self.ol = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
+        self.cl = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
 
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -111,8 +111,6 @@ class LGnet_advmem(nn.Module):
         # print("x_i")
         # print(x_i.shape)
 
-        local_statistics = self.q_for_memory(torch.cat((z, z_prime, x_i), 1))
-
         # print("local")
         # print(local_statistics.shape)
         # print("global")
@@ -121,7 +119,7 @@ class LGnet_advmem(nn.Module):
         # print("h")
         # print(h.shape)
 
-        combined = torch.cat((local_statistics, h), 1)
+        combined = torch.cat((z, z_prime, x_i, h), 1)
 
         # print("combined")
         # print(combined.shape)

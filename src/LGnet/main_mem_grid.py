@@ -182,7 +182,14 @@ def PrepareDataset(
 
 
 def Train_Model(
-    model, discriminator, train_dataloader, valid_dataloader, num_epochs=300, patience=10, min_delta=0.00001, lambda_dis=0.1
+    model,
+    discriminator,
+    train_dataloader,
+    valid_dataloader,
+    num_epochs=300,
+    patience=10,
+    min_delta=0.00001,
+    lambda_dis=0.1,
 ):
     print("Model Structure: ", model)
     print("Start Training ... ")

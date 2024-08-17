@@ -75,10 +75,10 @@ class LGnet_mem(nn.Module):
         self.memory_dim = memory_dim
 
         # Define the LSTM gate layers
-        self.il = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.fl = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.ol = nn.Linear(memory_dim + hidden_size, hidden_size)
-        self.cl = nn.Linear(memory_dim + hidden_size, hidden_size)
+        self.il = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
+        self.fl = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
+        self.ol = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
+        self.cl = nn.Linear(2 * input_size + output_size + hidden_size, hidden_size)
 
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -129,9 +129,9 @@ class LGnet_mem(nn.Module):
         # print("x_i")
         # print(x_i.shape)
 
-        local_statistics = self.q_for_memory(torch.cat((z, z_prime, x_i), 1))
+        # local_statistics = self.q_for_memory(torch.cat((z, z_prime, x_i), 1))
 
-        self.local_statistics = local_statistics
+        # self.local_statistics = local_statistics
 
         # print("local")
         # print(local_statistics.shape)
@@ -143,7 +143,7 @@ class LGnet_mem(nn.Module):
         # print("h")
         # print(h.shape)
 
-        combined = torch.cat((local_statistics, h), 1)
+        combined = torch.cat((z, z_prime, x_i, h), 1)
 
         # print("combined")
         # print(combined.shape)
@@ -210,7 +210,7 @@ class LGnet_mem(nn.Module):
             c = Cell_State
             forecasts = outputs[:, -1, :].squeeze()
 
-            local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
+            # local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
 
             # print("local")
             # print(local_statistics.shape)
@@ -222,7 +222,7 @@ class LGnet_mem(nn.Module):
             # print("h")
             # print(h.shape)
 
-            combined = torch.cat((local_statistics, h), 1)
+            combined = torch.cat((forecasts, forecasts, forecasts, h), 1)
 
             # print("combined")
             # print(combined.shape)

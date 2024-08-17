@@ -62,7 +62,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 64)
+    speed_matrix_s = np.array_split(speed_matrix, 8)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -615,7 +615,7 @@ if __name__ == "__main__":
 
             # DataFrameの作成
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
-            
+
         np.random.seed(1024)
         mask_ones_proportion = 0.8
         Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
@@ -650,7 +650,7 @@ if __name__ == "__main__":
     Z = linkage(distance_matrix, method="ward")
 
     # クラスタ数を決定 (例: 2クラスタ)
-    num_clusters = 5
+    num_clusters = 25
     clusters = fcluster(Z, num_clusters, criterion="maxclust")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

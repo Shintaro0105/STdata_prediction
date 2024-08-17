@@ -58,7 +58,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 64)
+    speed_matrix_s = np.array_split(speed_matrix, 8)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -126,8 +126,8 @@ def PrepareDataset(
     print("Generate Mask, Delta, Last_observed_X finished. Start to shuffle and split dataset ...")
     sample_size = speed_sequences.shape[0]
     index = np.arange(sample_size, dtype=int)
-    np.random.seed(1024)
-    np.random.shuffle(index)
+    # np.random.seed(1024)
+    # np.random.shuffle(index)
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]
@@ -582,7 +582,7 @@ def grid_search_lgnet(
 
 
 if __name__ == "__main__":
-    data = "loop"
+    data = "BAY"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
@@ -634,7 +634,7 @@ if __name__ == "__main__":
 
     memory_sizes = [8, 16, 32, 64, 128]
     lambda_dis_values = [0, 0.1, 1.0, 10, 100]
-    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_loop_64_s.csv"
+    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_BAY_16_gl.csv"
 
     grid_search_lgnet(
         memory_sizes,

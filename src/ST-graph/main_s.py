@@ -62,7 +62,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 64)
+    speed_matrix_s = np.array_split(speed_matrix, 8)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -569,7 +569,7 @@ def Test_Model(model, test_dataloader, max_speed):
 
 
 if __name__ == "__main__":
-    data = "LA"
+    data = "BAY"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
@@ -621,11 +621,11 @@ if __name__ == "__main__":
         Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
         speed_matrix = np.multiply(speed_matrix, Mask)
 
-        file_path = '/workspaces/STdata_prediction/src/ST-graph/input/graph_sensor_locations_bay.csv'
+        file_path = "/workspaces/STdata_prediction/src/ST-graph/input/graph_sensor_locations_bay.csv"
         data = pd.read_csv(file_path)
-        indexes = data['index']
-        latitudes = data['latitude']
-        longitudes = data['longitude']
+        indexes = data["index"]
+        latitudes = data["latitude"]
+        longitudes = data["longitude"]
 
         num_sensors = len(indexes)
         distance_matrix = np.zeros((num_sensors, num_sensors))
@@ -634,7 +634,6 @@ if __name__ == "__main__":
             for j in range(num_sensors):
                 if i != j:
                     distance_matrix[i, j] = euclidean_distance(latitudes[i], longitudes[i], latitudes[j], longitudes[j])
-
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
         speed_matrix, BATCH_SIZE=32, masking=True
@@ -651,7 +650,7 @@ if __name__ == "__main__":
     Z = linkage(distance_matrix, method="ward")
 
     # クラスタ数を決定 (例: 2クラスタ)
-    num_clusters = 25
+    num_clusters = 30
     clusters = fcluster(Z, num_clusters, criterion="maxclust")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

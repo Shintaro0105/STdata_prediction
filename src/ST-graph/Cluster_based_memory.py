@@ -87,10 +87,10 @@ class Cluster_based_memory(nn.Module):
         self.clusters = clusters
 
         # Define the LSTM gate layers
-        self.il = nn.Linear(output_size + hidden_size, hidden_size)
-        self.fl = nn.Linear(output_size + hidden_size, hidden_size)
-        self.ol = nn.Linear(output_size + hidden_size, hidden_size)
-        self.cl = nn.Linear(output_size + hidden_size, hidden_size)
+        self.il = nn.Linear(2 * input_size + output_size + output_size + hidden_size, hidden_size)
+        self.fl = nn.Linear(2 * input_size + output_size + output_size + hidden_size, hidden_size)
+        self.ol = nn.Linear(2 * input_size + output_size + output_size + hidden_size, hidden_size)
+        self.cl = nn.Linear(2 * input_size + output_size + output_size + hidden_size, hidden_size)
 
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -193,7 +193,7 @@ class Cluster_based_memory(nn.Module):
         # print("h")
         # print(h.shape)
 
-        combined = torch.cat((global_dynamics, h), 1)
+        combined = torch.cat((z, z_prime, x_i, global_dynamics, h), 1)
 
         # print("combined")
         # print(combined.shape)
@@ -298,7 +298,7 @@ class Cluster_based_memory(nn.Module):
             # print("h")
             # print(h.shape)
 
-            combined = torch.cat((global_dynamics, h), 1)
+            combined = torch.cat((forecasts, forecasts, forecasts, global_dynamics, h), 1)
 
             # print("combined")
             # print(combined.shape)

@@ -12,6 +12,8 @@ dependencies = [
     "tables>=3.9.2",
     "h5py>=3.11.0",
     "scipy>=1.14.0",
+    "scikit-fuzzy>=0.4.2",
+    "geopy>=2.4.1",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"

@@ -58,7 +58,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 4)
+    speed_matrix_s = np.array_split(speed_matrix, 16)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -571,7 +571,7 @@ def grid_search_lgnet(
 
 
 if __name__ == "__main__":
-    data = "BAY"
+    data = "loop"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
@@ -624,7 +624,7 @@ if __name__ == "__main__":
 
     memory_sizes = [128]
     lambda_dis_values = [0, 0.1, 1.0, 10, 100]
-    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_mem_pre_BAY_4.csv"
+    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_mem_pre_loop_16_gl.csv"
 
     grid_search_lgnet(
         memory_sizes,

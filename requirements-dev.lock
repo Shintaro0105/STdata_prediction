@@ -32,6 +32,10 @@ fonttools==4.51.0
     # via matplotlib
 fsspec==2024.3.1
     # via torch
+geographiclib==2.0
+    # via geopy
+geopy==2.4.1
+    # via python-docker
 h5py==3.11.0
     # via python-docker
 iniconfig==2.0.0
@@ -72,6 +76,7 @@ ndindex==1.8
 nest-asyncio==1.6.0
     # via ipykernel
 networkx==3.3
+    # via scikit-fuzzy
     # via torch
 numexpr==2.10.1
     # via blosc2
@@ -84,6 +89,7 @@ numpy==1.26.4
     # via numexpr
     # via pandas
     # via python-docker
+    # via scikit-fuzzy
     # via scikit-learn
     # via scipy
     # via tables
@@ -158,10 +164,13 @@ pyzmq==26.0.0
     # via ipykernel
     # via jupyter-client
 ruff==0.3.7
+scikit-fuzzy==0.4.2
+    # via python-docker
 scikit-learn==1.4.2
     # via python-docker
 scipy==1.14.0
     # via python-docker
+    # via scikit-fuzzy
     # via scikit-learn
 six==1.16.0
     # via asttokens
