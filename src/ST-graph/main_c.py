@@ -569,7 +569,7 @@ def Test_Model(model, test_dataloader, max_speed):
 
 
 if __name__ == "__main__":
-    data = "BAY"
+    data = "LA"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":

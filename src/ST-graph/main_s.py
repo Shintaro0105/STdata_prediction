@@ -217,7 +217,7 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    learning_rate = 0.0001
+    learning_rate = 0.00005
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
     adversarial_loss = wasserstein_loss
@@ -569,7 +569,7 @@ def Test_Model(model, test_dataloader, max_speed):
 
 
 if __name__ == "__main__":
-    data = "BAY"
+    data = "LA"
     if data == "inrix":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
@@ -650,7 +650,7 @@ if __name__ == "__main__":
     Z = linkage(distance_matrix, method="ward")
 
     # クラスタ数を決定 (例: 2クラスタ)
-    num_clusters = 30
+    num_clusters = 25
     clusters = fcluster(Z, num_clusters, criterion="maxclust")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -660,7 +660,7 @@ if __name__ == "__main__":
         hidden_dim,
         output_dim,
         X_mean,
-        memory_size=8,
+        memory_size=128,
         memory_dim=128,
         num_layers=1,
         num_clusters=num_clusters,
@@ -669,6 +669,6 @@ if __name__ == "__main__":
     )
     adv = Discriminator(input_dim)
     best_lgnet, losses_lgnet = Train_Model(
-        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=0.1
+        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=1.0
     )
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

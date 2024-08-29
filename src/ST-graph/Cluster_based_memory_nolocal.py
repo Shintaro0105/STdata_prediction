@@ -87,10 +87,10 @@ class Cluster_based_memory(nn.Module):
         self.clusters = clusters
 
         # Define the LSTM gate layers
-        self.il = nn.Linear(2 * input_size + 2 * output_size + hidden_size, hidden_size)
-        self.fl = nn.Linear(2 * input_size + 2 * output_size + hidden_size, hidden_size)
-        self.ol = nn.Linear(2 * input_size + 2 * output_size + hidden_size, hidden_size)
-        self.cl = nn.Linear(2 * input_size + 2 * output_size + hidden_size, hidden_size)
+        self.il = nn.Linear(output_size + hidden_size, hidden_size)
+        self.fl = nn.Linear(output_size + hidden_size, hidden_size)
+        self.ol = nn.Linear(output_size + hidden_size, hidden_size)
+        self.cl = nn.Linear(output_size + hidden_size, hidden_size)
 
         self.fc = nn.Linear(hidden_size, output_size)
 
@@ -103,8 +103,7 @@ class Cluster_based_memory(nn.Module):
         # Initialize memory component
         self.memory = nn.Parameter(torch.Tensor(num_clusters, memory_size, output_size))
 
-        self.local_weights = nn.Parameter(torch.Tensor(3, output_size))
-
+        self.local_weights = nn.Parameter(torch.Tensor(3))
         self.global_weights = nn.Parameter(torch.Tensor(num_clusters))
 
         self.s_i = torch.Tensor(memory_size)
@@ -162,7 +161,7 @@ class Cluster_based_memory(nn.Module):
 
         locals = torch.cat((z.unsqueeze(1), z_prime.unsqueeze(1), x_i.unsqueeze(1)), 1)
 
-        local_statistics = torch.sum(locals * self.local_weights, dim=1)
+        local_statistics = torch.tensordot(locals, self.local_weights, dims=([1], [0]))
         self.local_statistics = local_statistics
 
         global_dynamics = None
@@ -186,8 +185,6 @@ class Cluster_based_memory(nn.Module):
             else:
                 global_dynamics = torch.cat((global_dynamics, torch.matmul(s_i, cluster_memory).unsqueeze(1)), 1)
 
-        # self.global_weights = self.global_weights / self.global_weights.sum()
-
         global_dynamics = torch.tensordot(global_dynamics, self.global_weights, dims=([1], [0]))
         self.global_dynamics = global_dynamics
 
@@ -201,7 +198,7 @@ class Cluster_based_memory(nn.Module):
         # print("h")
         # print(h.shape)
 
-        combined = torch.cat((z, z_prime, x_i, global_dynamics, h), 1)
+        combined = torch.cat((global_dynamics, h), 1)
 
         # print("combined")
         # print(combined.shape)
@@ -268,9 +265,7 @@ class Cluster_based_memory(nn.Module):
             c = Cell_State
             forecasts = outputs[:, -1, :].squeeze()
 
-            locals = torch.cat((forecasts.unsqueeze(1), forecasts.unsqueeze(1), forecasts.unsqueeze(1)), 1)
-
-            local_statistics = torch.sum(locals * self.local_weights, dim=1)
+            local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
 
             self.local_statistics = local_statistics
 
@@ -308,7 +303,7 @@ class Cluster_based_memory(nn.Module):
             # print("h")
             # print(h.shape)
 
-            combined = torch.cat((forecasts, forecasts, forecasts, global_dynamics, h), 1)
+            combined = torch.cat((global_dynamics, h), 1)
 
             # print("combined")
             # print(combined.shape)
