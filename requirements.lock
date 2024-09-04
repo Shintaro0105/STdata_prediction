@@ -74,7 +74,6 @@ ndindex==1.8
 nest-asyncio==1.6.0
     # via ipykernel
 networkx==3.3
-    # via scikit-fuzzy
     # via torch
 numexpr==2.10.1
     # via blosc2
@@ -88,7 +87,6 @@ numpy==1.26.4
     # via numexpr
     # via pandas
     # via python-docker
-    # via scikit-fuzzy
     # via scikit-learn
     # via scipy
     # via seaborn
@@ -160,13 +158,12 @@ pytz==2024.1
 pyzmq==26.0.0
     # via ipykernel
     # via jupyter-client
-scikit-fuzzy==0.4.2
+scikit-fuzzy==0.5.0
     # via python-docker
 scikit-learn==1.4.2
     # via python-docker
 scipy==1.14.0
     # via python-docker
-    # via scikit-fuzzy
     # via scikit-learn
 seaborn==0.13.2
     # via python-docker
@@ -186,6 +183,8 @@ torch==2.3.0
 tornado==6.4
     # via ipykernel
     # via jupyter-client
+tqdm==4.66.5
+    # via python-docker
 traitlets==5.14.2
     # via comm
     # via ipykernel

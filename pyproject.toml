@@ -12,10 +12,11 @@ dependencies = [
     "tables>=3.9.2",
     "h5py>=3.11.0",
     "scipy>=1.14.0",
-    "scikit-fuzzy>=0.4.2",
+    "scikit-fuzzy>=0.5.0",
     "geopy>=2.4.1",
     "seaborn>=0.13.2",
     "dtaidistance>=2.3.12",
+    "tqdm>=4.66.5",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"
