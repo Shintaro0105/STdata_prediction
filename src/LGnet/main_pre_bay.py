@@ -41,6 +41,8 @@ def PrepareDataset_premiss(
     train_propotion=0.7,
     valid_propotion=0.2,
     masking=False,
+    mask_ones_proportion=0.8,
+    split_num=8,
 ):
     """Prepare training and testing datasets and dataloaders.
 
@@ -57,7 +59,7 @@ def PrepareDataset_premiss(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 8)
+    speed_matrix_s = np.array_split(speed_matrix, split_num)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -67,11 +69,20 @@ def PrepareDataset_premiss(
     max_speed = speed_matrix.max().max()
     speed_matrix = speed_matrix / max_speed
 
-    speed_sequences, speed_labels = [], []
+    np.random.seed(1024)
+    Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
+    speed_matrix_m = np.multiply(speed_matrix, Mask)
+
+    speed_sequences, speed_labels, speed_labels_unmask = [], [], []
     for i in range(time_len - seq_len - pred_len):
-        speed_sequences.append(speed_matrix.iloc[i : i + seq_len].values)
-        speed_labels.append(speed_matrix.iloc[i + seq_len : i + seq_len + pred_len].values)
-    speed_sequences, speed_labels = np.asarray(speed_sequences), np.asarray(speed_labels)
+        speed_sequences.append(speed_matrix_m.iloc[i : i + seq_len].values)
+        speed_labels.append(speed_matrix_m.iloc[i + seq_len : i + seq_len + pred_len].values)
+        speed_labels_unmask.append(speed_matrix.iloc[i + seq_len : i + seq_len + pred_len].values)
+    speed_sequences, speed_labels, speed_labels_unmask = (
+        np.asarray(speed_sequences),
+        np.asarray(speed_labels),
+        np.asarray(speed_labels_unmask),
+    )
 
     # using zero-one mask to randomly set elements to zeros
     if masking:
@@ -130,6 +141,7 @@ def PrepareDataset_premiss(
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]
+    speed_labels_unmask = speed_labels_unmask[index]
 
     if masking:
         X_last_obsv = X_last_obsv[index]
@@ -149,8 +161,9 @@ def PrepareDataset_premiss(
 
         speed_labels = np.expand_dims(speed_labels, axis=1)
         speed_labels_mask = np.expand_dims(Mask_l, axis=1)
+        speed_labels_unmask = np.expand_dims(speed_labels_unmask, axis=1)
 
-        speed_labels = np.concatenate((speed_labels, speed_labels_mask), axis=1)
+        speed_labels = np.concatenate((speed_labels, speed_labels_mask, speed_labels_unmask), axis=1)
 
     train_index = int(np.floor(sample_size * train_propotion))
     valid_index = int(np.floor(sample_size * (train_propotion + valid_propotion)))
@@ -479,24 +492,12 @@ def Test_Model(model, test_dataloader, max_speed):
         loss_L1 = torch.nn.L1Loss()
 
         if output_last:
-            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
-            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
-            MAE = torch.mean(
-                torch.mul(
-                    torch.squeeze(labels[:, 1, :, :]),
-                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :])),
-                )
-            )
+            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
+            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
+            MAE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :])))
             MAPE = torch.mean(
-                torch.mul(
-                    torch.squeeze(labels[:, 1, :, :]),
-                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :]))
-                    / torch.where(
-                        torch.squeeze(labels[:, 1, :, :]) == 0,
-                        torch.ones_like(torch.squeeze(labels[:, 0, :, :])),
-                        torch.squeeze(labels[:, 0, :, :]),
-                    ),
-                )
+                torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :]))
+                / torch.squeeze(labels[:, 2, :, :])
             )
         else:
             loss_mse = loss_MSE(outputs[:, -1, :], labels)
@@ -573,13 +574,8 @@ if __name__ == "__main__":
             # DataFrameの作成
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
-        np.random.seed(1024)
-        mask_ones_proportion = 0.2
-        Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
-        speed_matrix = np.multiply(speed_matrix, Mask)
-
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset_premiss(
-        speed_matrix, BATCH_SIZE=32, masking=True
+        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=8
     )
 
     inputs, labels = next(iter(train_dataloader))

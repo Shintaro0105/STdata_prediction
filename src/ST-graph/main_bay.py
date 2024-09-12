@@ -7,8 +7,13 @@ import pandas as pd
 import torch
 import torch.nn as nn
 import torch.utils.data as utils
+from Cluster_based_memory import *
 from Discriminator import *
-from LGnet_ import *
+from scipy.cluster.hierarchy import fcluster, linkage
+
+
+def euclidean_distance(lat1, lon1, lat2, lon2):
+    return ((lat1 - lat2) ** 2 + (lon1 - lon2) ** 2) ** 0.5
 
 
 def wasserstein_loss(y_pred, y_true):
@@ -33,7 +38,7 @@ def plot_losses_combined(losses_train, losses_valid, losses_d_real, losses_d_fak
     plt.show()
 
 
-def PrepareDataset_premiss(
+def PrepareDataset(
     speed_matrix,
     BATCH_SIZE=40,
     seq_len=10,
@@ -41,6 +46,8 @@ def PrepareDataset_premiss(
     train_propotion=0.7,
     valid_propotion=0.2,
     masking=False,
+    mask_ones_proportion=0.8,
+    split_num=8,
 ):
     """Prepare training and testing datasets and dataloaders.
 
@@ -57,7 +64,7 @@ def PrepareDataset_premiss(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 8)
+    speed_matrix_s = np.array_split(speed_matrix, split_num)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -67,11 +74,20 @@ def PrepareDataset_premiss(
     max_speed = speed_matrix.max().max()
     speed_matrix = speed_matrix / max_speed
 
-    speed_sequences, speed_labels = [], []
+    np.random.seed(1024)
+    Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
+    speed_matrix_m = np.multiply(speed_matrix, Mask)
+
+    speed_sequences, speed_labels, speed_labels_unmask = [], [], []
     for i in range(time_len - seq_len - pred_len):
-        speed_sequences.append(speed_matrix.iloc[i : i + seq_len].values)
-        speed_labels.append(speed_matrix.iloc[i + seq_len : i + seq_len + pred_len].values)
-    speed_sequences, speed_labels = np.asarray(speed_sequences), np.asarray(speed_labels)
+        speed_sequences.append(speed_matrix_m.iloc[i : i + seq_len].values)
+        speed_labels.append(speed_matrix_m.iloc[i + seq_len : i + seq_len + pred_len].values)
+        speed_labels_unmask.append(speed_matrix.iloc[i + seq_len : i + seq_len + pred_len].values)
+    speed_sequences, speed_labels, speed_labels_unmask = (
+        np.asarray(speed_sequences),
+        np.asarray(speed_labels),
+        np.asarray(speed_labels_unmask),
+    )
 
     # using zero-one mask to randomly set elements to zeros
     if masking:
@@ -130,6 +146,7 @@ def PrepareDataset_premiss(
 
     speed_sequences = speed_sequences[index]
     speed_labels = speed_labels[index]
+    speed_labels_unmask = speed_labels_unmask[index]
 
     if masking:
         X_last_obsv = X_last_obsv[index]
@@ -149,8 +166,9 @@ def PrepareDataset_premiss(
 
         speed_labels = np.expand_dims(speed_labels, axis=1)
         speed_labels_mask = np.expand_dims(Mask_l, axis=1)
+        speed_labels_unmask = np.expand_dims(speed_labels_unmask, axis=1)
 
-        speed_labels = np.concatenate((speed_labels, speed_labels_mask), axis=1)
+        speed_labels = np.concatenate((speed_labels, speed_labels_mask, speed_labels_unmask), axis=1)
 
     train_index = int(np.floor(sample_size * train_propotion))
     valid_index = int(np.floor(sample_size * (train_propotion + valid_propotion)))
@@ -252,6 +270,7 @@ def Train_Model(
         #     mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
         #     print(f"Epoch {epoch}: GPU memory allocated at before train: {mem_allocated:.2f} MB")
 
+        # i = 0
         for data in train_dataloader:
             model.train()
             discriminator.train()
@@ -267,7 +286,6 @@ def Train_Model(
 
             # print("inputs")
             # print(inputs.shape)
-            # print(labels[:, 1, :, :].shape)
 
             optimizer_adv.zero_grad()
 
@@ -303,10 +321,12 @@ def Train_Model(
             # print(f"generations: {generations.shape}")
             # print(f"forecasts_prediction: {forecasts_prediction.shape}")
 
-            outputs = torch.mul(outputs, torch.squeeze(labels[:, 1, :, :]))
-
+            # print("outputs")
             # print(outputs.shape)
+            # print("torch.squeeze(labels[:, 1, :, :])")
             # print(torch.squeeze(labels[:, 1, :, :]).shape)
+
+            outputs = torch.mul(outputs[:, -1, :], torch.squeeze(labels[:, 1, :, :]))
 
             if output_last:
                 loss_train = (
@@ -335,6 +355,12 @@ def Train_Model(
             #     f"Forecasting Loss: {loss.item():.4f}  G Loss Forecast: {g_loss_forecast.item():.4f}  G Loss: {g_loss.item():.4f}"
             # )
 
+            # if i < 10 and epoch % 25 == 0:
+            #     plot_locals_graph(model.local_statistics, epoch)
+            #     plot_heatmap(model.s_i, epoch)
+            #     plot_globals_graph(model.global_dynamics, epoch)
+            #     i += 1
+
             # validation
             model.eval()
             try:
@@ -351,7 +377,7 @@ def Train_Model(
             with torch.no_grad():
                 outputs_val, generations = model(inputs_val)
 
-                outputs_val = torch.mul(outputs_val, torch.squeeze(labels_val[:, 1, :, :]))
+                outputs_val = torch.mul(outputs_val[:, -1, :], torch.squeeze(labels_val[:, 1, :, :]))
 
                 if output_last:
                     loss_valid = loss_MSE(torch.squeeze(outputs_val), torch.squeeze(labels_val[:, 0, :, :]))
@@ -373,6 +399,16 @@ def Train_Model(
 
             # output
             trained_number += 1
+
+        # if epoch % 25 == 0:
+        #     plot_locals_graph(model.local_statistics, epoch)
+        #     plot_heatmap(model.s_i, epoch)
+        #     plot_globals_graph(model.global_dynamics, epoch)
+        #     plot_memorymap(model.memory, epoch)
+        #     plot_sum_memory(model.memory, epoch)
+        #     plot_local_input_graph(model.z, model.z_prime, model.x_i, 0, epoch)
+        #     plot_localglobal_graph(model.local_statistics, model.global_dynamics, 0, epoch)
+        #     plot_memory_mat_local(torch.matmul(model.memory, model.local_statistics.unsqueeze(-1)).squeeze(-1), epoch)
 
         avg_losses_epoch_train = sum(losses_epoch_train).cpu().numpy() / float(len(losses_epoch_train))
         avg_losses_epoch_valid = sum(losses_epoch_valid).cpu().numpy() / float(len(losses_epoch_valid))
@@ -406,6 +442,14 @@ def Train_Model(
                 patient_epoch += 1
                 if patient_epoch >= patience:
                     print("Early Stopped at Epoch:", epoch)
+                    # plot_locals_graph(model.local_statistics, epoch)
+                    # plot_heatmap(model.s_i, epoch)
+                    # plot_globals_graph(model.global_dynamics, epoch)
+                    # plot_memorymap(model.memory, epoch)
+                    # plot_sum_memory(model.memory, epoch)
+                    # plot_local_input_graph(model.z, model.z_prime, model.x_i, 0, epoch)
+                    # plot_localglobal_graph(model.local_statistics, model.global_dynamics, 0, epoch)
+                    # plot_memory_mat_local(torch.matmul(model.memory, model.local_statistics.unsqueeze(-1)).squeeze(-1),epoch)
                     break
 
         # Print training parameters
@@ -427,13 +471,13 @@ def Train_Model(
             mem_allocated = torch.cuda.memory_allocated() / (1024 * 1024)  # MB単位で取得
             print(f"Epoch {epoch}: GPU memory allocated at end of epoch: {mem_allocated:.2f} MB")
 
-    # plot_losses_combined(
-    #     losses_epochs_train,
-    #     losses_epochs_valid,
-    #     losses_epochs_d_loss_real,
-    #     losses_epochs_d_loss_fake,
-    #     "combined_losses.png",
-    # )
+    plot_losses_combined(
+        losses_epochs_train,
+        losses_epochs_valid,
+        losses_epochs_d_loss_real,
+        losses_epochs_d_loss_fake,
+        "combined_losses.png",
+    )
 
     return best_model, [losses_train, losses_valid, losses_epochs_train, losses_epochs_valid]
 
@@ -479,24 +523,12 @@ def Test_Model(model, test_dataloader, max_speed):
         loss_L1 = torch.nn.L1Loss()
 
         if output_last:
-            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
-            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :]))
-            MAE = torch.mean(
-                torch.mul(
-                    torch.squeeze(labels[:, 1, :, :]),
-                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :])),
-                )
-            )
+            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
+            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
+            MAE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :])))
             MAPE = torch.mean(
-                torch.mul(
-                    torch.squeeze(labels[:, 1, :, :]),
-                    torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 0, :, :]))
-                    / torch.where(
-                        torch.squeeze(labels[:, 1, :, :]) == 0,
-                        torch.ones_like(torch.squeeze(labels[:, 0, :, :])),
-                        torch.squeeze(labels[:, 0, :, :]),
-                    ),
-                )
+                torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :]))
+                / torch.squeeze(labels[:, 2, :, :])
             )
         else:
             loss_mse = loss_MSE(outputs[:, -1, :], labels)
@@ -542,10 +574,6 @@ if __name__ == "__main__":
         speed_matrix = pd.read_pickle("../Data_Warehouse/Data_network_traffic/inrix_seattle_speed_matrix_2012")
     elif data == "loop":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
-        np.random.seed(1024)
-        mask_ones_proportion = 0.8
-        Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
-        speed_matrix = np.multiply(speed_matrix, Mask)
     elif data == "LA":
         with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/metr-la.h5", "r") as f:
             # dfグループ内のデータセットを取得
@@ -559,6 +587,21 @@ if __name__ == "__main__":
 
             # DataFrameの作成
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
+        file_path = "/workspaces/STdata_prediction/src/ST-graph/input/graph_sensor_locations.csv"
+        data = pd.read_csv(file_path)
+        indexes = data["index"]
+        sensor_ids = data["sensor_id"]
+        latitudes = data["latitude"]
+        longitudes = data["longitude"]
+
+        num_sensors = len(indexes)
+        distance_matrix = np.zeros((num_sensors, num_sensors))
+
+        for i in range(num_sensors):
+            for j in range(num_sensors):
+                if i != j:
+                    distance_matrix[i, j] = euclidean_distance(latitudes[i], longitudes[i], latitudes[j], longitudes[j])
+
     elif data == "BAY":
         with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/pems-bay.h5", "r") as f:
             # dfグループ内のデータセットを取得
@@ -573,13 +616,22 @@ if __name__ == "__main__":
             # DataFrameの作成
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
-        np.random.seed(1024)
-        mask_ones_proportion = 0.2
-        Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
-        speed_matrix = np.multiply(speed_matrix, Mask)
+        file_path = "/workspaces/STdata_prediction/src/ST-graph/input/graph_sensor_locations_bay.csv"
+        data = pd.read_csv(file_path)
+        indexes = data["index"]
+        latitudes = data["latitude"]
+        longitudes = data["longitude"]
 
-    train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset_premiss(
-        speed_matrix, BATCH_SIZE=32, masking=True
+        num_sensors = len(indexes)
+        distance_matrix = np.zeros((num_sensors, num_sensors))
+
+        for i in range(num_sensors):
+            for j in range(num_sensors):
+                if i != j:
+                    distance_matrix[i, j] = euclidean_distance(latitudes[i], longitudes[i], latitudes[j], longitudes[j])
+
+    train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
+        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=64
     )
 
     inputs, labels = next(iter(train_dataloader))
@@ -588,9 +640,30 @@ if __name__ == "__main__":
     hidden_dim = fea_size
     output_dim = fea_size
 
-    lgnet = LGnet_(
-        input_dim, hidden_dim, output_dim, X_mean, memory_size=16, memory_dim=128, num_layers=1, output_last=True
+    # クラスタリングの実行
+    # 'ward'法はクラスタ間の分散が最小となるようにクラスタを結合する方法です
+    Z = linkage(distance_matrix, method="ward")
+
+    # クラスタ数を決定 (例: 2クラスタ)
+    num_clusters = 25
+    clusters = fcluster(Z, num_clusters, criterion="maxclust")
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+    cluster_based_memory = Cluster_based_memory(
+        input_dim,
+        hidden_dim,
+        output_dim,
+        X_mean,
+        memory_size=8,
+        memory_dim=128,
+        num_layers=1,
+        num_clusters=num_clusters,
+        clusters=torch.tensor(clusters).to(device),
+        output_last=True,
     )
     adv = Discriminator(input_dim)
-    best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=0.1)
+    best_lgnet, losses_lgnet = Train_Model(
+        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=0.1
+    )
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
