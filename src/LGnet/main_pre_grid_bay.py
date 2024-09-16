@@ -618,7 +618,7 @@ if __name__ == "__main__":
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=64
+        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=8
     )
 
     inputs, labels = next(iter(train_dataloader))
@@ -629,7 +629,7 @@ if __name__ == "__main__":
 
     memory_sizes = [8, 16, 32, 64, 128]
     lambda_dis_values = [0, 0.1, 1.0, 10, 100]
-    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_BAY_64_gl_unmask.csv"
+    output_path = "/workspaces/STdata_prediction/src/LGnet/output/grid_search_results_BAY_8_gl_unmask.csv"
 
     grid_search_lgnet(
         memory_sizes,

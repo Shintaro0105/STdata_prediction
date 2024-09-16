@@ -160,7 +160,7 @@ class LGnet(nn.Module):
 
         return h, c
 
-    def forward(self, input):
+    def forward(self, input, forecast=False):
         batch_size = input.size(0)
         step_size = input.size(2)
 
@@ -211,37 +211,42 @@ class LGnet(nn.Module):
             c = f * c + i * c_tilde
             h = o * F.tanh(c)
 
-            forecast_by_memory = None
-            for m in range(self.memory_size):
-                memory_out = None
-                for step in range(100):
+            generation = self.fc(h).unsqueeze(1)
+
+            if forecast:
+                forecast_by_memory = None
+                for m in range(self.memory_size):
                     h = Hidden_State
                     c = Cell_State
                     forecasts = outputs[:, -1, :].squeeze()
+                    memory_out = None
+                    for step in range(100):
+                        local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
 
-                    local_statistics = self.q_for_memory(torch.cat((forecasts, forecasts, forecasts), 1))
+                        global_dynamics = self.memory[m, :].unsqueeze(0).repeat(batch_size, 1)
 
-                    s_i = F.softmax(torch.matmul(self.memory, local_statistics.unsqueeze(-1)).squeeze(-1), dim=-1)
-                    global_dynamics = torch.matmul(s_i, self.memory)
+                        combined = torch.cat((forecasts, forecasts, forecasts, global_dynamics, h), 1)
 
-                    combined = torch.cat((forecasts, forecasts, forecasts, global_dynamics, h), 1)
+                        i = F.sigmoid(self.il(combined))
+                        f = F.sigmoid(self.fl(combined))
+                        o = F.sigmoid(self.ol(combined))
+                        c_tilde = F.tanh(self.cl(combined))
+                        c = f * c + i * c_tilde
+                        h = o * F.tanh(c)
 
-                    i = F.sigmoid(self.il(combined))
-                    f = F.sigmoid(self.fl(combined))
-                    o = F.sigmoid(self.ol(combined))
-                    c_tilde = F.tanh(self.cl(combined))
-                    c = f * c + i * c_tilde
-                    h = o * F.tanh(c)
-                    if memory_out is None:
-                        memory_out = self.fc(h).unsqueeze(1)
+                        forecasts = self.fc(h)
+
+                        if memory_out is None:
+                            memory_out = self.fc(h).unsqueeze(1)
+                        else:
+                            memory_out = torch.cat((memory_out, self.fc(h).unsqueeze(1)), 1)
+                    if forecast_by_memory is None:
+                        forecast_by_memory = memory_out.unsqueeze(2)
                     else:
-                        memory_out = torch.cat((memory_out, self.fc(h).unsqueeze(1)), 1)
-                if forecast_by_memory is None:
-                    forecast_by_memory = memory_out.unsqueeze(2)
-                else:
-                    forecast_by_memory = torch.cat((forecast_by_memory, memory_out.unsqueeze(2)), 2)
-
-            return outputs, self.fc(h).unsqueeze(1), forecast_by_memory
+                        forecast_by_memory = torch.cat((forecast_by_memory, memory_out.unsqueeze(2)), 2)
+                return outputs, generation, forecast_by_memory
+            else:
+                return outputs, generation
         else:
             return outputs
 

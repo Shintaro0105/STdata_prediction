@@ -484,7 +484,7 @@ if __name__ == "__main__":
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=8
+        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.5, split_num=8
     )
 
     inputs, labels = next(iter(train_dataloader))
