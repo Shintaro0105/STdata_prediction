@@ -523,11 +523,11 @@ def Test_Model(model, test_dataloader, max_speed):
         loss_L1 = torch.nn.L1Loss()
 
         if output_last:
-            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
-            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
-            MAE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :])))
+            loss_mse = loss_MSE(torch.squeeze(outputs[:, -1, :]), torch.squeeze(labels[:, 2, :, :]))
+            loss_l1 = loss_L1(torch.squeeze(outputs[:, -1, :]), torch.squeeze(labels[:, 2, :, :]))
+            MAE = torch.mean(torch.abs(torch.squeeze(outputs[:, -1, :]) - torch.squeeze(labels[:, 2, :, :])))
             MAPE = torch.mean(
-                torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :]))
+                torch.abs(torch.squeeze(outputs[:, -1, :]) - torch.squeeze(labels[:, 2, :, :]))
                 / torch.squeeze(labels[:, 2, :, :])
             )
         else:
@@ -631,7 +631,7 @@ if __name__ == "__main__":
                     distance_matrix[i, j] = euclidean_distance(latitudes[i], longitudes[i], latitudes[j], longitudes[j])
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=64
+        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=8
     )
 
     inputs, labels = next(iter(train_dataloader))
@@ -655,7 +655,7 @@ if __name__ == "__main__":
         hidden_dim,
         output_dim,
         X_mean,
-        memory_size=128,
+        memory_size=8,
         memory_dim=128,
         num_layers=1,
         num_clusters=num_clusters,

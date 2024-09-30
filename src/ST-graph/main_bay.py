@@ -523,11 +523,11 @@ def Test_Model(model, test_dataloader, max_speed):
         loss_L1 = torch.nn.L1Loss()
 
         if output_last:
-            loss_mse = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
-            loss_l1 = loss_L1(torch.squeeze(outputs), torch.squeeze(labels[:, 2, :, :]))
-            MAE = torch.mean(torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :])))
+            loss_mse = loss_MSE(torch.squeeze(outputs[:, -1, :]), torch.squeeze(labels[:, 2, :, :]))
+            loss_l1 = loss_L1(torch.squeeze(outputs[:, -1, :]), torch.squeeze(labels[:, 2, :, :]))
+            MAE = torch.mean(torch.abs(torch.squeeze(outputs[:, -1, :]) - torch.squeeze(labels[:, 2, :, :])))
             MAPE = torch.mean(
-                torch.abs(torch.squeeze(outputs) - torch.squeeze(labels[:, 2, :, :]))
+                torch.abs(torch.squeeze(outputs[:, -1, :]) - torch.squeeze(labels[:, 2, :, :]))
                 / torch.squeeze(labels[:, 2, :, :])
             )
         else:
