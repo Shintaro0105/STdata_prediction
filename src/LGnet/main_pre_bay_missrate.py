@@ -613,7 +613,7 @@ if __name__ == "__main__":
             # DataFrameの作成
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
-    output_path = "/workspaces/STdata_prediction/src/LGnet/output/missrate_BAY_8_8_01.csv"
+    output_path = "/workspaces/STdata_prediction/src/LGnet/output/missrate_BAY_8_64_100.csv"
 
     results = []
     # Search for the best mask_ones_proportion value
@@ -633,10 +633,10 @@ if __name__ == "__main__":
         output_dim = fea_size
 
         lgnet = LGnet_(
-            input_dim, hidden_dim, output_dim, X_mean, memory_size=8, memory_dim=128, num_layers=1, output_last=True
+            input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
         )
         adv = Discriminator(input_dim)
-        best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=0.1)
+        best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=100)
         [mean_l1, std_l1, MAE_, MAPE_] = Test_Model(best_lgnet, test_dataloader, max_speed)
 
         results.append(
