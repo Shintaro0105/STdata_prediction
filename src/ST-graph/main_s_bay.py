@@ -645,7 +645,7 @@ if __name__ == "__main__":
     Z = linkage(distance_matrix, method="ward")
 
     # クラスタ数を決定 (例: 2クラスタ)
-    num_clusters = 25
+    num_clusters = 11
     clusters = fcluster(Z, num_clusters, criterion="maxclust")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -664,6 +664,6 @@ if __name__ == "__main__":
     )
     adv = Discriminator(input_dim)
     best_lgnet, losses_lgnet = Train_Model(
-        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=1.0
+        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=0.1
     )
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

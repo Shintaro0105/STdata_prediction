@@ -60,7 +60,7 @@ def PrepareDataset_premiss(
     """
 
     speed_matrix_s = np.array_split(speed_matrix, split_num)
-    speed_matrix = speed_matrix_s[0]
+    speed_matrix = speed_matrix_s[1]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
 
@@ -575,7 +575,7 @@ if __name__ == "__main__":
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset_premiss(
-        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=8
+        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=2
     )
 
     inputs, labels = next(iter(train_dataloader))
@@ -585,8 +585,8 @@ if __name__ == "__main__":
     output_dim = fea_size
 
     lgnet = LGnet_(
-        input_dim, hidden_dim, output_dim, X_mean, memory_size=16, memory_dim=128, num_layers=1, output_last=True
+        input_dim, hidden_dim, output_dim, X_mean, memory_size=64, memory_dim=128, num_layers=1, output_last=True
     )
     adv = Discriminator(input_dim)
-    best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=0.1)
+    best_lgnet, losses_lgnet = Train_Model(lgnet, adv, train_dataloader, valid_dataloader, lambda_dis=100)
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)
