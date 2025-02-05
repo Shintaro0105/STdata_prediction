@@ -57,7 +57,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 8)
+    speed_matrix_s = np.array_split(speed_matrix, 4)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -204,7 +204,7 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    lambda_dis = 10.0
+    lambda_dis = 0.1
     learning_rate = 0.0001
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
@@ -296,7 +296,9 @@ def Train_Model(
             outputs = torch.mul(outputs, torch.squeeze(labels[:, 1, :, :]))
 
             if output_last:
-                loss_train = loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :])) - lambda_dis * g_loss_forecast
+                loss_train = (
+                    loss_MSE(torch.squeeze(outputs), torch.squeeze(labels[:, 0, :, :])) - lambda_dis * g_loss_forecast
+                )
             else:
                 full_labels = torch.cat((inputs[:, 1:, :], labels), dim=1)
                 loss_train = loss_MSE(outputs, full_labels) - lambda_dis * g_loss_forecast
@@ -527,10 +529,8 @@ if __name__ == "__main__":
     elif data == "loop":
         speed_matrix = pd.read_pickle("/workspaces/STdata_prediction/src/GRU-D-zhiyongc/input/speed_matrix_2015")
         np.random.seed(1024)
-        mask_ones_proportion=0.8
-        Mask = np.random.choice(
-            [0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion]
-        )
+        mask_ones_proportion = 0.8
+        Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
         speed_matrix = np.multiply(speed_matrix, Mask)
     elif data == "LA":
         with h5py.File("/workspaces/STdata_prediction/src/LGnet/input/metr-la.h5", "r") as f:

@@ -60,7 +60,7 @@ def PrepareDataset_premiss(
     """
 
     speed_matrix_s = np.array_split(speed_matrix, split_num)
-    speed_matrix = speed_matrix_s[1]
+    speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
 
@@ -575,7 +575,7 @@ if __name__ == "__main__":
             speed_matrix = pd.DataFrame(block0_values, index=axis1, columns=block0_items)
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset_premiss(
-        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.8, split_num=2
+        speed_matrix, BATCH_SIZE=16, masking=True, mask_ones_proportion=0.8, split_num=8
     )
 
     inputs, labels = next(iter(train_dataloader))

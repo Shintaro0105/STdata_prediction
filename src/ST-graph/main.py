@@ -62,7 +62,7 @@ def PrepareDataset(
         Testing dataloader
     """
 
-    speed_matrix_s = np.array_split(speed_matrix, 8)
+    speed_matrix_s = np.array_split(speed_matrix, 4)
     speed_matrix = speed_matrix_s[0]
     time_len = speed_matrix.shape[0]
     print("Time len: ", time_len)
@@ -621,11 +621,11 @@ if __name__ == "__main__":
         Mask = np.random.choice([0, 1], size=(speed_matrix.shape), p=[1 - mask_ones_proportion, mask_ones_proportion])
         speed_matrix = np.multiply(speed_matrix, Mask)
 
-        file_path = '/workspaces/STdata_prediction/src/ST-graph/input/graph_sensor_locations_bay.csv'
+        file_path = "/workspaces/STdata_prediction/src/ST-graph/input/graph_sensor_locations_bay.csv"
         data = pd.read_csv(file_path)
-        indexes = data['index']
-        latitudes = data['latitude']
-        longitudes = data['longitude']
+        indexes = data["index"]
+        latitudes = data["latitude"]
+        longitudes = data["longitude"]
 
         num_sensors = len(indexes)
         distance_matrix = np.zeros((num_sensors, num_sensors))
@@ -636,7 +636,7 @@ if __name__ == "__main__":
                     distance_matrix[i, j] = euclidean_distance(latitudes[i], longitudes[i], latitudes[j], longitudes[j])
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=32, masking=True
+        speed_matrix, BATCH_SIZE=16, masking=True
     )
 
     inputs, labels = next(iter(train_dataloader))
@@ -650,7 +650,7 @@ if __name__ == "__main__":
     Z = linkage(distance_matrix, method="ward")
 
     # クラスタ数を決定 (例: 2クラスタ)
-    num_clusters = 25
+    num_clusters = 9
     clusters = fcluster(Z, num_clusters, criterion="maxclust")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -660,7 +660,7 @@ if __name__ == "__main__":
         hidden_dim,
         output_dim,
         X_mean,
-        memory_size=8,
+        memory_size=16,
         memory_dim=128,
         num_layers=1,
         num_clusters=num_clusters,
@@ -669,6 +669,6 @@ if __name__ == "__main__":
     )
     adv = Discriminator(input_dim)
     best_lgnet, losses_lgnet = Train_Model(
-        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=0.1
+        cluster_based_memory, adv, train_dataloader, valid_dataloader, lambda_dis=0.0
     )
     [losses_l1, losses_mse, mean_l1, std_l1] = Test_Model(best_lgnet, test_dataloader, max_speed)

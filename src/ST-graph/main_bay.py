@@ -229,7 +229,7 @@ def Train_Model(
     loss_MSE = torch.nn.MSELoss()
     loss_L1 = torch.nn.L1Loss()
 
-    learning_rate = 0.0001
+    learning_rate = 0.00005
     optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate)
     optimizer_adv = torch.optim.RMSprop(discriminator.parameters(), lr=learning_rate)
     adversarial_loss = wasserstein_loss
@@ -631,7 +631,7 @@ if __name__ == "__main__":
                     distance_matrix[i, j] = euclidean_distance(latitudes[i], longitudes[i], latitudes[j], longitudes[j])
 
     train_dataloader, valid_dataloader, test_dataloader, max_speed, X_mean = PrepareDataset(
-        speed_matrix, BATCH_SIZE=32, masking=True, mask_ones_proportion=0.6, split_num=8
+        speed_matrix, BATCH_SIZE=16, masking=True, mask_ones_proportion=0.8, split_num=8
     )
 
     inputs, labels = next(iter(train_dataloader))
@@ -645,7 +645,7 @@ if __name__ == "__main__":
     Z = linkage(distance_matrix, method="ward")
 
     # クラスタ数を決定 (例: 2クラスタ)
-    num_clusters = 2
+    num_clusters = 9
     clusters = fcluster(Z, num_clusters, criterion="maxclust")
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
